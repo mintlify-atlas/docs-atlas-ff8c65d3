@@ -1,0 +1,338 @@
+---
+title: Stop Agent
+description: Stop a running agent's runtime
+api: POST /agents/{agentId}/stop
+---
+
+## Endpoint
+
+```
+POST /agents/{agentId}/stop
+```
+
+Stops an agent's runtime, preventing it from processing new messages. The agent's configuration and data are preserved and can be restarted later.
+
+## Request
+
+### Path Parameters
+
+<ParamField path="agentId" type="string" required>
+  Unique identifier (UUID) of the agent to stop
+</ParamField>
+
+### Headers
+
+<ParamField header="Content-Type" type="string" required>
+  Must be `application/json`
+</ParamField>
+
+<ParamField header="Authorization" type="string">
+  Bearer token for authentication (if required)
+</ParamField>
+
+### Body Parameters (Optional)
+
+<ParamField body="graceful" type="boolean" default="true">
+  Whether to wait for in-progress messages to complete
+</ParamField>
+
+<ParamField body="timeout" type="number" default="30000">
+  Maximum time in milliseconds to wait for graceful shutdown
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the agent stopped successfully
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Status message
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+  Agent stop details
+  
+  <ResponseField name="data.agentId" type="string" required>
+    Unique identifier for the agent
+  </ResponseField>
+  
+  <ResponseField name="data.status" type="string" required>
+    New status: `inactive`
+  </ResponseField>
+  
+  <ResponseField name="data.stoppedAt" type="number">
+    Unix timestamp when the agent was stopped
+  </ResponseField>
+</ResponseField>
+
+## Examples
+
+### Basic Stop
+
+```bash
+curl -X POST http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/stop \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+### Graceful Stop
+
+```bash
+curl -X POST http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/stop \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "graceful": true,
+    "timeout": 60000
+  }'
+```
+
+### Force Stop
+
+```bash
+curl -X POST http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/stop \
+  -H "Content-Type: application/json" \
+  -d '{
+    "graceful": false
+  }'
+```
+
+## Response Example
+
+### Success Response
+
+```json
+{
+  "success": true,
+  "message": "Agent stopped successfully",
+  "data": {
+    "agentId": "550e8400-e29b-41d4-a716-446655440000",
+    "status": "inactive",
+    "stoppedAt": 1709683200000
+  }
+}
+```
+
+## Code Examples
+
+### JavaScript/Node.js
+
+```javascript
+const agentId = "550e8400-e29b-41d4-a716-446655440000";
+
+const response = await fetch(
+  `http://localhost:3000/agents/${agentId}/stop`,
+  {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      graceful: true,
+      timeout: 30000
+    })
+  }
+);
+
+const { success, message, data } = await response.json();
+
+if (success) {
+  console.log(message);
+  console.log(`Agent status: ${data.status}`);
+}
+```
+
+### Python
+
+```python
+import requests
+
+agent_id = "550e8400-e29b-41d4-a716-446655440000"
+
+response = requests.post(
+    f'http://localhost:3000/agents/{agent_id}/stop',
+    json={'graceful': True, 'timeout': 30000}
+)
+
+data = response.json()
+
+if data['success']:
+    print(data['message'])
+    print(f"Agent status: {data['data']['status']}")
+```
+
+### TypeScript
+
+```typescript
+interface StopAgentRequest {
+  graceful?: boolean;
+  timeout?: number;
+}
+
+interface StopAgentResponse {
+  success: boolean;
+  message: string;
+  data: {
+    agentId: string;
+    status: 'inactive';
+    stoppedAt: number;
+  };
+}
+
+const agentId = "550e8400-e29b-41d4-a716-446655440000";
+
+const request: StopAgentRequest = {
+  graceful: true,
+  timeout: 30000
+};
+
+const response = await fetch(
+  `http://localhost:3000/agents/${agentId}/stop`,
+  {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request)
+  }
+);
+
+const result: StopAgentResponse = await response.json();
+```
+
+## Error Responses
+
+### 404 Not Found
+
+```json
+{
+  "success": false,
+  "error": "Agent not found"
+}
+```
+
+### 409 Conflict
+
+```json
+{
+  "success": false,
+  "error": "Agent is not running"
+}
+```
+
+### 408 Request Timeout
+
+```json
+{
+  "success": false,
+  "error": "Graceful shutdown timed out"
+}
+```
+
+### 500 Internal Server Error
+
+```json
+{
+  "success": false,
+  "error": "Failed to stop agent runtime"
+}
+```
+
+## Graceful vs Force Stop
+
+### Graceful Stop (Recommended)
+
+A graceful stop:
+- Waits for in-progress messages to complete
+- Allows actions to finish executing
+- Saves state before shutting down
+- Closes connections cleanly
+
+```javascript
+await fetch(`http://localhost:3000/agents/${agentId}/stop`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ graceful: true, timeout: 60000 })
+});
+```
+
+### Force Stop
+
+A force stop:
+- Immediately terminates the agent runtime
+- May interrupt in-progress operations
+- Use only when graceful stop fails
+
+```javascript
+await fetch(`http://localhost:3000/agents/${agentId}/stop`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ graceful: false })
+});
+```
+
+## Shutdown Process
+
+When an agent stops gracefully:
+
+1. **Stop Accepting Messages** - New messages are rejected
+2. **Complete In-Progress** - Wait for current operations to finish
+3. **Save State** - Persist any pending data
+4. **Close Connections** - Disconnect from services
+5. **Mark Inactive** - Update agent status to `inactive`
+
+## Use Cases
+
+### Maintenance Window
+
+Stop agents during maintenance:
+
+```javascript
+// Stop all agents
+const agents = await fetch('http://localhost:3000/agents').then(r => r.json());
+
+for (const agent of agents.data) {
+  if (agent.status === 'active') {
+    await fetch(`http://localhost:3000/agents/${agent.agentId}/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ graceful: true })
+    });
+  }
+}
+```
+
+### Resource Management
+
+Stop idle agents to free resources:
+
+```javascript
+const stopIdleAgents = async () => {
+  const agents = await getActiveAgents();
+  
+  for (const agent of agents) {
+    const lastActivity = await getLastActivityTime(agent.agentId);
+    const idleTime = Date.now() - lastActivity;
+    
+    if (idleTime > 3600000) { // 1 hour
+      await stopAgent(agent.agentId);
+    }
+  }
+};
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Start Agent" icon="play" href="/rest/agents/start">
+    Restart the agent when ready
+  </Card>
+  <Card title="Get Agent" icon="info" href="/rest/agents/get">
+    Check agent status
+  </Card>
+  <Card title="Update Agent" icon="edit" href="/rest/agents/update">
+    Modify configuration while stopped
+  </Card>
+  <Card title="Delete Agent" icon="trash" href="/rest/agents/delete">
+    Permanently remove the agent
+  </Card>
+</CardGroup>

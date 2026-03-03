@@ -1,0 +1,485 @@
+---
+title: 'Custom Actions'
+description: 'Build custom actions to give your elizaOS agents new capabilities and behaviors'
+---
+
+Actions define what your agent can do. This guide shows you how to create custom actions that extend agent behavior.
+
+## Action Anatomy
+
+An action consists of several key components:
+
+```typescript
+import type { Action, ActionResult, HandlerCallback } from '@elizaos/core';
+
+const myAction: Action = {
+  name: 'MY_ACTION',              // Unique action identifier
+  similes: ['SIMILAR_ACTION'],    // Alternative names
+  description: 'Description...',  // What the action does
+  validate: async (runtime, message, state) => true,
+  handler: async (runtime, message, state, options, callback) => {
+    // Action implementation
+  },
+  examples: [],                   // Training examples
+  parameters: []                  // Optional parameters
+};
+```
+
+## Creating a Simple Action
+
+Let's build a weather action step by step.
+
+<Steps>
+  <Step title="Define the Action">
+    ```typescript
+    import type { Action, IAgentRuntime, Memory, State } from '@elizaos/core';
+    
+    const weatherAction: Action = {
+      name: 'GET_WEATHER',
+      similes: ['CHECK_WEATHER', 'WEATHER_REPORT'],
+      description: 'Get current weather for a location',
+      
+      validate: async (runtime: IAgentRuntime, message: Memory) => {
+        // Only available when user asks about weather
+        const text = message.content.text?.toLowerCase() || '';
+        return text.includes('weather') || text.includes('temperature');
+      },
+      
+      handler: async (runtime, message, state, options, callback) => {
+        // Implementation in next step
+      },
+      
+      examples: []
+    };
+    ```
+  </Step>
+
+  <Step title="Implement the Handler">
+    ```typescript
+    handler: async (runtime, message, state, options, callback) => {
+      // Extract location from message
+      const location = await extractLocation(runtime, message);
+      
+      // Fetch weather data
+      const weather = await getWeatherData(location);
+      
+      // Send response to user
+      await callback({
+        text: `The weather in ${location} is ${weather.conditions} with a temperature of ${weather.temp}°F`,
+        actions: ['GET_WEATHER']
+      });
+      
+      // Return action result
+      return {
+        success: true,
+        text: `Retrieved weather for ${location}`,
+        values: {
+          location,
+          temperature: weather.temp,
+          conditions: weather.conditions
+        }
+      };
+    }
+    ```
+  </Step>
+
+  <Step title="Add Examples">
+    ```typescript
+    examples: [
+      [
+        {
+          name: 'User',
+          content: { text: 'What is the weather in New York?' }
+        },
+        {
+          name: 'Agent',
+          content: {
+            text: 'The weather in New York is sunny with a temperature of 72°F',
+            actions: ['GET_WEATHER']
+          }
+        }
+      ],
+      [
+        {
+          name: 'User',
+          content: { text: 'Is it raining in London?' }
+        },
+        {
+          name: 'Agent',
+          content: {
+            text: 'The weather in London is rainy with a temperature of 58°F',
+            actions: ['GET_WEATHER']
+          }
+        }
+      ]
+    ]
+    ```
+  </Step>
+</Steps>
+
+## Action Components
+
+### Validation
+
+The `validate` function determines when the action is available:
+
+```typescript
+validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
+  // Check if action is appropriate for this message
+  const hasPermission = await checkUserPermission(runtime, message.entityId);
+  const isRelevant = message.content.text?.includes('keyword');
+  
+  return hasPermission && isRelevant;
+}
+```
+
+### Handler
+
+The handler executes the action:
+
+```typescript
+handler: async (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+  options?: HandlerOptions,
+  callback?: HandlerCallback,
+  responses?: Memory[]
+): Promise<ActionResult> => {
+  try {
+    // 1. Parse parameters
+    const params = await parseActionParams(runtime, message);
+    
+    // 2. Perform action
+    const result = await performAction(params);
+    
+    // 3. Send response to user
+    if (callback) {
+      await callback({
+        text: formatResponse(result),
+        actions: ['MY_ACTION']
+      });
+    }
+    
+    // 4. Return action result
+    return {
+      success: true,
+      text: 'Action completed successfully',
+      values: result,
+      data: { ...params, result }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      text: `Action failed: ${error.message}`,
+      values: { error: error.message }
+    };
+  }
+}
+```
+
+### Parameters
+
+Define parameters for structured input:
+
+```typescript
+import type { ActionParameter } from '@elizaos/core';
+
+const myAction: Action = {
+  name: 'SEND_EMAIL',
+  parameters: [
+    {
+      name: 'recipient',
+      description: 'Email address of the recipient',
+      required: true,
+      schema: {
+        type: 'string',
+        pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'
+      },
+      examples: ['user@example.com']
+    },
+    {
+      name: 'subject',
+      description: 'Email subject line',
+      required: true,
+      schema: { type: 'string' }
+    },
+    {
+      name: 'priority',
+      description: 'Email priority level',
+      required: false,
+      schema: {
+        type: 'string',
+        enum: ['low', 'normal', 'high'],
+        default: 'normal'
+      }
+    }
+  ],
+  handler: async (runtime, message, state, options, callback) => {
+    // Access validated parameters
+    const params = options?.params || {};
+    const { recipient, subject, priority } = params;
+    
+    await sendEmail({
+      to: recipient as string,
+      subject: subject as string,
+      priority: (priority as string) || 'normal'
+    });
+    
+    return { success: true };
+  }
+};
+```
+
+## Using the Actions System
+
+The actions system from `src/actions.ts` provides utilities:
+
+```typescript Reference: packages/typescript/src/actions.ts
+import {
+  formatActions,
+  parseActionParams,
+  validateActionParams
+} from '@elizaos/core';
+
+// Format actions for display
+const formatted = formatActions(actions, seed);
+// Output:
+// - **ACTION_NAME**: Description
+//   Parameters:
+//     - param1 (required): Description (type)
+
+// Parse parameters from XML
+const params = parseActionParams(`
+  <params>
+    <MY_ACTION>
+      <recipient>user@example.com</recipient>
+      <subject>Hello</subject>
+    </MY_ACTION>
+  </params>
+`);
+// Returns: Map { 'MY_ACTION' => { recipient: 'user@example.com', subject: 'Hello' } }
+
+// Validate parameters against schema
+const { valid, params: validatedParams, errors } = validateActionParams(
+  myAction,
+  extractedParams
+);
+```
+
+## Advanced Patterns
+
+### Multi-Step Actions
+
+Use previous action results:
+
+```typescript
+handler: async (runtime, message, state, options, callback) => {
+  // Access previous action results
+  const previousResults = options?.actionContext?.previousResults || [];
+  
+  const previousData = previousResults.find(
+    r => r.data?.actionName === 'PREVIOUS_ACTION'
+  );
+  
+  if (previousData) {
+    // Use data from previous action
+    const context = previousData.values;
+    // ...
+  }
+  
+  return { success: true };
+}
+```
+
+### State Management
+
+Use state to track action progress:
+
+```typescript
+handler: async (runtime, message, state, options, callback) => {
+  // Read from state
+  const currentStep = state?.values?.currentStep || 0;
+  
+  // Perform step
+  await performStep(currentStep);
+  
+  // Return updated state
+  return {
+    success: true,
+    values: {
+      currentStep: currentStep + 1,
+      completed: currentStep >= 3
+    }
+  };
+}
+```
+
+### Using Services
+
+Access services from action handlers:
+
+```typescript
+handler: async (runtime, message, state, options, callback) => {
+  // Get service
+  const taskService = runtime.getService('TaskService');
+  
+  if (taskService) {
+    // Use service methods
+    await taskService.createTask({
+      name: 'Follow up',
+      roomId: message.roomId,
+      metadata: { /* ... */ }
+    });
+  }
+  
+  return { success: true };
+}
+```
+
+## Real-World Example: Reply Action
+
+Here's the reply action from the bootstrap plugin:
+
+```typescript Reference: packages/typescript/src/bootstrap/actions/reply.ts
+import { ModelType, composePromptFromState, parseKeyValueXml } from '@elizaos/core';
+
+const replyAction: Action = {
+  name: 'REPLY',
+  similes: ['GREET', 'REPLY_TO_MESSAGE', 'SEND_REPLY', 'RESPOND', 'RESPONSE'],
+  description: 'Replies to the current conversation with generated text',
+  
+  validate: async (_runtime: IAgentRuntime) => true,
+  
+  handler: async (runtime, message, state, _options, callback, responses) => {
+    // Get all providers from previous responses
+    const allProviders = responses?.flatMap(
+      res => res.content?.providers || []
+    ) || [];
+    
+    // Compose state with relevant context
+    state = await runtime.composeState(message, [
+      ...allProviders,
+      'RECENT_MESSAGES',
+      'ACTION_STATE'
+    ]);
+    
+    // Generate response using template
+    const prompt = composePromptFromState({
+      state,
+      template: runtime.character.templates?.replyTemplate || replyTemplate
+    });
+    
+    const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt
+    });
+    
+    // Parse XML response
+    const parsedXml = parseKeyValueXml(response);
+    const thought = typeof parsedXml?.thought === 'string' 
+      ? parsedXml.thought : '';
+    const text = typeof parsedXml?.text === 'string' 
+      ? parsedXml.text : '';
+    
+    // Send to user
+    if (callback) {
+      await callback({
+        thought,
+        text,
+        actions: ['REPLY']
+      });
+    }
+    
+    return {
+      text: `Generated reply: ${text}`,
+      values: {
+        success: true,
+        responded: true,
+        lastReply: text,
+        lastReplyTime: Date.now(),
+        thoughtProcess: thought
+      },
+      success: true
+    };
+  },
+  
+  examples: [
+    [
+      { name: 'User', content: { text: 'Hello there!' } },
+      { name: 'Agent', content: { 
+        text: 'Hi! How can I help you today?',
+        actions: ['REPLY']
+      }}
+    ]
+  ]
+};
+```
+
+## Testing Actions
+
+Test actions in isolation:
+
+```typescript
+import { describe, it, expect, vi } from 'vitest';
+
+describe('Weather Action', () => {
+  it('should validate for weather queries', async () => {
+    const message = createTestMemory({
+      content: { text: 'What is the weather like?' }
+    });
+    
+    const isValid = await weatherAction.validate(runtime, message);
+    expect(isValid).toBe(true);
+  });
+  
+  it('should return weather data', async () => {
+    const callback = vi.fn();
+    
+    await weatherAction.handler(
+      runtime,
+      message,
+      state,
+      {},
+      callback
+    );
+    
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining('weather'),
+        actions: ['GET_WEATHER']
+      })
+    );
+  });
+});
+```
+
+See the [Testing guide](/guides/testing) for more details.
+
+## Best Practices
+
+<Tip>
+- Keep actions focused on a single responsibility
+- Provide clear, descriptive names and similes
+- Always validate inputs before processing
+- Include multiple training examples for better action selection
+- Return detailed `ActionResult` with values for chaining
+- Handle errors gracefully and return meaningful error messages
+</Tip>
+
+<Warning>
+- Don't perform long-running operations in `validate()`
+- Don't modify state directly - return new values in `ActionResult`
+- Don't skip calling the callback - users expect responses
+- Don't hardcode API keys or credentials
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Creating Plugins" icon="puzzle-piece" href="/guides/creating-plugins">
+    Package your actions into reusable plugins
+  </Card>
+  <Card title="Testing" icon="flask" href="/guides/testing">
+    Test your custom actions
+  </Card>
+</CardGroup>

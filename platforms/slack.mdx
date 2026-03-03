@@ -1,0 +1,427 @@
+---
+title: Slack Integration
+description: Connect your elizaOS agent to Slack for workspace collaboration
+---
+
+## Overview
+
+The Slack integration enables your elizaOS agent to participate in Slack workspaces, responding to messages, managing channels, and facilitating team collaboration. Your agent can send messages, react to content, pin important items, and more.
+
+## Prerequisites
+
+Before setting up Slack integration, you need:
+
+- A Slack workspace where you have permission to install apps
+- Access to create a Slack app in the [Slack API Dashboard](https://api.slack.com/apps)
+
+## Setup
+
+<Steps>
+
+### Create a Slack App
+
+1. Go to [Slack API: Your Apps](https://api.slack.com/apps)
+2. Click "Create New App"
+3. Choose "From scratch"
+4. Enter your app name and select the workspace
+5. Click "Create App"
+
+### Configure OAuth Scopes
+
+1. In your app settings, go to "OAuth & Permissions"
+2. Scroll to "Scopes" section
+3. Add the following **Bot Token Scopes**:
+   - `chat:write` - Send messages
+   - `chat:write.public` - Send messages to channels without joining
+   - `channels:history` - View messages in public channels
+   - `channels:read` - View basic channel information
+   - `groups:history` - View messages in private channels
+   - `groups:read` - View basic private channel information
+   - `im:history` - View messages in DMs
+   - `im:read` - View DM information
+   - `mpim:history` - View messages in group DMs
+   - `mpim:read` - View group DM information
+   - `reactions:read` - View reactions
+   - `reactions:write` - Add reactions
+   - `users:read` - View user information
+   - `emoji:read` - View custom emoji
+
+<Tip>
+Add additional scopes based on your agent's needs:
+- `pins:write` / `pins:read` - Manage pinned items
+- `files:read` / `files:write` - Handle file uploads
+- `channels:manage` - Create and archive channels
+</Tip>
+
+### Enable Socket Mode
+
+1. Go to "Socket Mode" in the sidebar
+2. Toggle "Enable Socket Mode"
+3. Give your token a name (e.g., "elizaOS Socket Token")
+4. Copy the app-level token (starts with `xapp-`)
+
+### Get Your Bot Token
+
+1. Go to "OAuth & Permissions"
+2. Click "Install to Workspace"
+3. Review permissions and click "Allow"
+4. Copy the "Bot User OAuth Token" (starts with `xoxb-`)
+
+### Set Environment Variables
+
+Add the following to your `.env` file:
+
+```bash
+# Required
+SLACK_BOT_TOKEN=xoxb-your-bot-token-here
+SLACK_APP_TOKEN=xapp-your-app-token-here
+```
+
+### Add the Slack Plugin
+
+In your character configuration file, add the Slack plugin:
+
+```json
+{
+  "name": "YourAgent",
+  "plugins": [
+    "@elizaos/plugin-slack"
+  ],
+  "settings": {
+    "channels": {
+      "slack": {
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+</Steps>
+
+## Configuration
+
+### Environment Variables
+
+The Slack integration requires the following environment variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SLACK_BOT_TOKEN` | Yes | Your bot user OAuth token (starts with `xoxb-`) |
+| `SLACK_APP_TOKEN` | Yes | Your app-level token for Socket Mode (starts with `xapp-`) |
+
+**Alternative names supported:**
+- `SLACK_TOKEN` → `SLACK_BOT_TOKEN`
+- `SLACK_API_TOKEN` → `SLACK_BOT_TOKEN`
+
+### Character Settings
+
+Configure Slack-specific behavior and action permissions:
+
+```json
+{
+  "settings": {
+    "channels": {
+      "slack": {
+        "enabled": true,
+        "actions": {
+          "reactions": true,
+          "messages": true,
+          "pins": true,
+          "memberInfo": true,
+          "emojiList": true
+        }
+      }
+    }
+  }
+}
+```
+
+All action groups are enabled by default.
+
+## Features
+
+### Message Management
+
+Send, edit, and delete messages:
+
+```typescript
+// Send a message
+{
+  "action": "sendMessage",
+  "to": "channel:C12345678",
+  "content": "Hello from elizaOS!"
+}
+
+// Send a DM
+{
+  "action": "sendMessage",
+  "to": "user:U12345678",
+  "content": "Private message"
+}
+
+// Edit a message
+{
+  "action": "editMessage",
+  "channelId": "C12345678",
+  "messageId": "1234567890.123456",
+  "content": "Updated message content"
+}
+
+// Delete a message
+{
+  "action": "deleteMessage",
+  "channelId": "C12345678",
+  "messageId": "1234567890.123456"
+}
+```
+
+<Note>
+Slack message IDs (timestamps) are in the format `1234567890.123456`. You can get these from message context or by reading messages.
+</Note>
+
+### Read Messages
+
+Fetch recent messages from channels:
+
+```typescript
+{
+  "action": "readMessages",
+  "channelId": "C12345678",
+  "limit": 20
+}
+```
+
+### Reactions
+
+Add and view reactions:
+
+```typescript
+// Add a reaction
+{
+  "action": "react",
+  "channelId": "C12345678",
+  "messageId": "1234567890.123456",
+  "emoji": "✅"
+}
+
+// Or use emoji name
+{
+  "action": "react",
+  "channelId": "C12345678",
+  "messageId": "1234567890.123456",
+  "emoji": ":white_check_mark:"
+}
+
+// List reactions on a message
+{
+  "action": "reactions",
+  "channelId": "C12345678",
+  "messageId": "1234567890.123456"
+}
+```
+
+### Pin Management
+
+Pin important messages:
+
+```typescript
+// Pin a message
+{
+  "action": "pinMessage",
+  "channelId": "C12345678",
+  "messageId": "1234567890.123456"
+}
+
+// Unpin a message
+{
+  "action": "unpinMessage",
+  "channelId": "C12345678",
+  "messageId": "1234567890.123456"
+}
+
+// List pinned items
+{
+  "action": "listPins",
+  "channelId": "C12345678"
+}
+```
+
+### User Information
+
+Retrieve member details:
+
+```typescript
+{
+  "action": "memberInfo",
+  "userId": "U12345678"
+}
+```
+
+### Custom Emoji
+
+List available custom emoji:
+
+```typescript
+{
+  "action": "emojiList"
+}
+```
+
+### Rich Formatting
+
+Slack supports Block Kit for rich messages:
+
+```typescript
+{
+  "channel": "C12345678",
+  "blocks": [
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*Bold text* and _italic text_"
+      }
+    },
+    {
+      "type": "divider"
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "Button example:"
+      },
+      "accessory": {
+        "type": "button",
+        "text": {
+          "type": "plain_text",
+          "text": "Click Me"
+        },
+        "action_id": "button_click"
+      }
+    }
+  ]
+}
+```
+
+### Thread Replies
+
+Reply in threads to keep conversations organized:
+
+```typescript
+{
+  "channel": "C12345678",
+  "text": "Thread reply",
+  "thread_ts": "1234567890.123456" // Parent message timestamp
+}
+```
+
+## Message Context
+
+Your agent receives context with each message including:
+- `slack message id` - The message timestamp for actions
+- `channel` - The channel ID where the message was sent
+- User information
+- Thread context (if in a thread)
+
+Reuse these fields directly in action calls.
+
+## Socket Mode vs Events API
+
+### Socket Mode (Recommended for Development)
+
+- No public URL required
+- Works behind firewalls
+- Easier to set up for testing
+- Uses WebSocket connection
+
+### Events API (Recommended for Production)
+
+- More reliable for high-traffic apps
+- Lower latency
+- Requires public HTTPS endpoint
+- Better for distributed systems
+
+The elizaOS Slack integration uses Socket Mode by default.
+
+## Troubleshooting
+
+### Bot doesn't respond
+
+1. Verify both `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` are set correctly
+2. Check that Socket Mode is enabled in your Slack app settings
+3. Ensure the bot has been invited to the channel (`/invite @YourBot`)
+4. Check console logs for connection errors
+
+### Missing messages
+
+1. Verify OAuth scopes include appropriate `history` scopes
+2. Check that the bot is a member of the channel
+3. For private channels, ensure the bot was explicitly invited
+
+### Permission errors
+
+1. Review your OAuth scopes in the Slack app settings
+2. Reinstall the app after adding new scopes
+3. Check that actions match available permissions
+
+### Reactions not working
+
+1. Ensure `reactions:write` scope is added
+2. Verify emoji name/Unicode is valid
+3. For custom emoji, use `:emoji_name:` format
+
+## Best Practices
+
+1. **Use threads** - Keep channels organized by replying in threads
+2. **React to acknowledge** - Use reactions instead of "OK" messages
+3. **Pin important info** - Help users find key messages easily
+4. **Be concise** - Slack users value brief, actionable messages
+5. **Use formatting** - Make messages scannable with bold and lists
+6. **Respect quiet hours** - Consider user timezones and DND settings
+7. **Test in a sandbox** - Create a test workspace for development
+8. **Handle rate limits** - Implement backoff for API limits
+
+## Rate Limits
+
+Slack enforces rate limits:
+
+- **Tier 1 methods** (posting messages): ~1 request per second
+- **Tier 2 methods** (most reads): Varies by method
+- **Tier 3 methods** (complex operations): More restrictive
+- **Tier 4 methods** (rare operations): Most restrictive
+
+The SDK handles rate limiting automatically with exponential backoff.
+
+## Use Cases
+
+### Team Assistant
+
+- Answer questions about projects
+- Fetch information from external systems
+- Schedule reminders
+- Summarize discussions
+
+### Workflow Automation
+
+- Monitor channels for keywords
+- Create tickets from messages
+- Update project management tools
+- Send notifications from external systems
+
+### Collaboration Enhancement
+
+- Pin decisions automatically
+- React to messages based on sentiment
+- Thread organization
+- Archive summaries
+
+## Related Resources
+
+- [Slack API Documentation](https://api.slack.com/)
+- [Block Kit Builder](https://app.slack.com/block-kit-builder)
+- [Slack API Methods](https://api.slack.com/methods)
+- [Socket Mode Documentation](https://api.slack.com/apis/connections/socket)
+- [elizaOS Plugin Architecture](/plugins/architecture)
+- [Create a Plugin Guide](/guides/create-a-plugin)

@@ -1,122 +1,189 @@
 {
   "$schema": "https://mintlify.com/docs.json",
+  "name": "elizaOS",
   "theme": "mint",
-  "name": "Mint Starter Kit",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#0B35F1",
+    "light": "#0B35F1",
+    "dark": "#0B35F1"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/elizaos/eliza"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/elizaos/eliza",
+      "twitter": "https://twitter.com/elizaOS",
+      "discord": "https://discord.gg/ai16z"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
+              "installation",
               "quickstart",
-              "development"
+              "what-you-can-build"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/architecture",
+              "concepts/agents",
+              "concepts/runtime",
+              "concepts/plugins",
+              "concepts/characters",
+              "concepts/memory-and-state"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Guides",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "guides/agent-configuration",
+              "guides/creating-plugins",
+              "guides/custom-actions",
+              "guides/multi-agent-setup",
+              "guides/rag-integration",
+              "guides/streaming-responses",
+              "guides/testing",
+              "guides/deployment"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Multi-Language Support",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "languages/typescript",
+              "languages/python",
+              "languages/rust"
+            ]
+          },
+          {
+            "group": "Platform Integration",
+            "pages": [
+              "platforms/discord",
+              "platforms/telegram",
+              "platforms/slack",
+              "platforms/twitter",
+              "platforms/farcaster"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Core API",
             "pages": [
-              "api-reference/introduction"
+              "api/agent-runtime",
+              "api/character",
+              "api/memory",
+              "api/actions",
+              "api/evaluators",
+              "api/providers"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Services",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/services/message-service",
+              "api/services/embedding-service",
+              "api/services/approval-service",
+              "api/services/task-service"
+            ]
+          },
+          {
+            "group": "Plugin System",
+            "pages": [
+              "api/plugin-interface",
+              "api/plugin-hooks",
+              "api/plugin-schemas"
+            ]
+          },
+          {
+            "group": "Types",
+            "pages": [
+              "api/types/agent",
+              "api/types/plugin",
+              "api/types/runtime",
+              "api/types/database"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "REST API",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "rest/overview",
+              "rest/authentication"
+            ]
+          },
+          {
+            "group": "Agents",
+            "pages": [
+              "rest/agents/list",
+              "rest/agents/create",
+              "rest/agents/get",
+              "rest/agents/update",
+              "rest/agents/delete",
+              "rest/agents/start",
+              "rest/agents/stop"
+            ]
+          },
+          {
+            "group": "Messaging",
+            "pages": [
+              "rest/messaging/send-message",
+              "rest/messaging/get-messages",
+              "rest/messaging/create-channel",
+              "rest/messaging/sessions"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Examples",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "examples/basic-chat",
+              "examples/custom-character",
+              "examples/rest-api-server"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "examples/multi-agent",
+              "examples/rag-chatbot",
+              "examples/game-npc",
+              "examples/serverless",
+              "examples/browser-integration"
+            ]
+          },
+          {
+            "group": "Platform Integration",
+            "pages": [
+              "examples/discord-bot",
+              "examples/telegram-bot",
+              "examples/twitter-agent"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

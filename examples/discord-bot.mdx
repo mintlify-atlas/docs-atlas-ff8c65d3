@@ -1,0 +1,585 @@
+---
+title: "Discord Bot"
+description: "Deploy your elizaOS agent as a Discord bot"
+---
+
+Create an AI-powered Discord bot that can chat in channels, respond to mentions, and interact with server members. This example shows how to integrate elizaOS with Discord's API.
+
+## Overview
+
+Discord bots can enhance your server with AI-powered conversations, moderation, information lookup, and interactive commands.
+
+**What you'll learn:**
+- Set up Discord bot credentials
+- Handle messages and mentions
+- Respond in channels and DMs
+- Implement slash commands
+- Manage bot permissions
+
+---
+
+## Quick Start
+
+<Steps>
+  <Step title="Create Discord Application">
+    1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
+    2. Click "New Application"
+    3. Give it a name and create
+    4. Go to "Bot" section and click "Add Bot"
+    5. Copy the bot token
+  </Step>
+  
+  <Step title="Install Dependencies">
+    ```bash
+    bun add @elizaos/core @elizaos/plugin-openai @elizaos/plugin-sql discord.js uuid
+    ```
+  </Step>
+  
+  <Step title="Create Bot">
+    Create `discord-bot.ts` with bot code
+  </Step>
+  
+  <Step title="Run Bot">
+    ```bash
+    export DISCORD_BOT_TOKEN="your-token"
+    export OPENAI_API_KEY="your-key"
+    bun run discord-bot.ts
+    ```
+  </Step>
+  
+  <Step title="Invite Bot to Server">
+    1. Go to "OAuth2" → "URL Generator" in Developer Portal
+    2. Select scopes: `bot`, `applications.commands`
+    3. Select permissions: `Send Messages`, `Read Message History`
+    4. Copy and visit the generated URL
+    5. Select your server and authorize
+  </Step>
+</Steps>
+
+---
+
+## Complete Bot Code
+
+```typescript discord-bot.ts
+import {
+  Client,
+  GatewayIntentBits,
+  Message,
+  ChannelType,
+} from "discord.js";
+import {
+  AgentRuntime,
+  createMessageMemory,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import { v4 as uuidv4 } from "uuid";
+
+// Character definition
+const character = {
+  name: "Eliza",
+  username: "eliza_bot",
+  bio: "A helpful AI assistant for your Discord server.",
+  system: `You are Eliza, a friendly AI assistant in a Discord server.
+
+Behavior:
+- Be helpful, friendly, and engaging
+- Keep responses concise (under 2000 characters for Discord)
+- Use Discord markdown formatting when appropriate
+- Reference the conversation context
+- Be aware you're in a group chat (unless in DM)
+
+When responding:
+- If someone asks about your capabilities, explain what you can do
+- If you see @mentions of other users, acknowledge the conversation context
+- Adapt your tone to match the server's vibe`,
+};
+
+console.log("🚀 Initializing Eliza Discord Bot...");
+
+// Initialize elizaOS runtime
+const runtime = new AgentRuntime({
+  character,
+  plugins: [sqlPlugin, openaiPlugin],
+});
+
+await runtime.initialize();
+console.log("✅ Runtime initialized");
+
+// Initialize Discord client
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages,
+  ],
+});
+
+// Track typing indicators
+const typingChannels = new Set<string>();
+
+// Handle messages
+client.on("messageCreate", async (message: Message) => {
+  // Ignore bot's own messages
+  if (message.author.bot) return;
+
+  // Only respond to mentions or DMs
+  const isMentioned = message.mentions.has(client.user!.id);
+  const isDM = message.channel.type === ChannelType.DM;
+
+  if (!isMentioned && !isDM) return;
+
+  try {
+    // Show typing indicator
+    if (!typingChannels.has(message.channelId)) {
+      typingChannels.add(message.channelId);
+      await message.channel.sendTyping();
+    }
+
+    // Extract message content (remove bot mention)
+    let content = message.content;
+    if (isMentioned) {
+      content = content.replace(new RegExp(`<@!?${client.user!.id}>`), "").trim();
+    }
+
+    // Build context
+    const context = await buildContext(message);
+
+    // Create message for elizaOS
+    const fullMessage = context
+      ? `Context: ${context}\n\nUser message: ${content}`
+      : content;
+
+    const messageMemory = createMessageMemory({
+      id: uuidv4() as UUID,
+      entityId: stringToUuid(message.author.id),
+      roomId: stringToUuid(message.channelId),
+      content: { text: fullMessage },
+    });
+
+    // Get response from elizaOS
+    let response = "";
+    await runtime.messageService!.handleMessage(
+      runtime,
+      messageMemory,
+      async (responseContent) => {
+        if (responseContent?.text) {
+          response += responseContent.text;
+        }
+        return [];
+      }
+    );
+
+    // Split long messages (Discord limit: 2000 chars)
+    const chunks = splitMessage(response, 2000);
+
+    // Send response
+    for (const chunk of chunks) {
+      await message.reply(chunk);
+    }
+  } catch (error) {
+    console.error("Error handling message:", error);
+    await message.reply(
+      "Sorry, I encountered an error processing your message."
+    );
+  } finally {
+    typingChannels.delete(message.channelId);
+  }
+});
+
+// Build conversation context
+async function buildContext(message: Message): Promise<string> {
+  const context: string[] = [];
+
+  // Add server context
+  if (message.guild) {
+    context.push(`Server: ${message.guild.name}`);
+    context.push(`Channel: #${(message.channel as any).name}`);
+  }
+
+  // Add recent messages for context
+  try {
+    const messages = await message.channel.messages.fetch({ limit: 5 });
+    const recentMessages = Array.from(messages.values())
+      .reverse()
+      .slice(0, 4)
+      .filter((m) => m.id !== message.id && !m.author.bot)
+      .map((m) => `${m.author.username}: ${m.content}`);
+
+    if (recentMessages.length > 0) {
+      context.push(`Recent messages:\n${recentMessages.join("\n")}`);
+    }
+  } catch (error) {
+    // Ignore if we can't fetch messages
+  }
+
+  return context.join("\n");
+}
+
+// Split message into chunks
+function splitMessage(text: string, maxLength: number): string[] {
+  if (text.length <= maxLength) return [text];
+
+  const chunks: string[] = [];
+  let currentChunk = "";
+
+  const paragraphs = text.split("\n");
+
+  for (const paragraph of paragraphs) {
+    if (currentChunk.length + paragraph.length + 1 > maxLength) {
+      if (currentChunk) chunks.push(currentChunk.trim());
+      currentChunk = paragraph;
+    } else {
+      currentChunk += (currentChunk ? "\n" : "") + paragraph;
+    }
+  }
+
+  if (currentChunk) chunks.push(currentChunk.trim());
+
+  return chunks;
+}
+
+// Bot ready event
+client.on("ready", () => {
+  console.log(`✅ Bot logged in as ${client.user?.tag}`);
+  console.log(`👥 Active in ${client.guilds.cache.size} servers`);
+  console.log("\n💬 Bot is ready to respond to mentions and DMs!\n");
+});
+
+// Error handling
+client.on("error", (error) => {
+  console.error("Discord client error:", error);
+});
+
+process.on("SIGINT", async () => {
+  console.log("\n🚦 Shutting down...");
+  client.destroy();
+  await runtime.stop();
+  process.exit(0);
+});
+
+// Login
+const token = process.env.DISCORD_BOT_TOKEN;
+if (!token) {
+  console.error("❌ DISCORD_BOT_TOKEN environment variable is required");
+  process.exit(1);
+}
+
+client.login(token);
+```
+
+---
+
+## Slash Commands
+
+Add interactive slash commands:
+
+```typescript
+import { REST, Routes, SlashCommandBuilder } from "discord.js";
+
+// Define commands
+const commands = [
+  new SlashCommandBuilder()
+    .setName("ask")
+    .setDescription("Ask Eliza a question")
+    .addStringOption((option) =>
+      option
+        .setName("question")
+        .setDescription("Your question")
+        .setRequired(true)
+    ),
+  new SlashCommandBuilder()
+    .setName("help")
+    .setDescription("Get help using Eliza"),
+].map((command) => command.toJSON());
+
+// Register commands
+const rest = new REST().setToken(process.env.DISCORD_BOT_TOKEN!);
+
+await rest.put(
+  Routes.applicationCommands(process.env.DISCORD_APPLICATION_ID!),
+  { body: commands }
+);
+
+console.log("✅ Slash commands registered");
+
+// Handle slash commands
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === "ask") {
+    await interaction.deferReply();
+
+    const question = interaction.options.getString("question")!;
+
+    const messageMemory = createMessageMemory({
+      id: uuidv4() as UUID,
+      entityId: stringToUuid(interaction.user.id),
+      roomId: stringToUuid(interaction.channelId),
+      content: { text: question },
+    });
+
+    let response = "";
+    await runtime.messageService!.handleMessage(
+      runtime,
+      messageMemory,
+      async (content) => {
+        if (content?.text) {
+          response += content.text;
+        }
+        return [];
+      }
+    );
+
+    await interaction.editReply(response);
+  }
+
+  if (interaction.commandName === "help") {
+    await interaction.reply({
+      content: `**Eliza Bot Help**\n\n• Mention me (@${client.user?.username}) in any channel\n• Send me a DM\n• Use \`/ask\` command\n\nI can help with questions, conversations, and more!`,
+      ephemeral: true,
+    });
+  }
+});
+```
+
+---
+
+## Advanced Features
+
+### Embed Responses
+
+Use Discord embeds for rich formatting:
+
+```typescript
+import { EmbedBuilder } from "discord.js";
+
+const embed = new EmbedBuilder()
+  .setColor(0x0099ff)
+  .setTitle("Eliza's Response")
+  .setDescription(response)
+  .setTimestamp()
+  .setFooter({ text: "Powered by elizaOS" });
+
+await message.reply({ embeds: [embed] });
+```
+
+### Reaction-Based Interactions
+
+```typescript
+// Add reactions to messages
+const reply = await message.reply(response);
+await reply.react("👍");
+await reply.react("👎");
+
+// Listen for reactions
+const filter = (reaction: any, user: any) => {
+  return !user.bot && ['👍', '👎'].includes(reaction.emoji.name);
+};
+
+const collector = reply.createReactionCollector({ filter, time: 60000 });
+
+collector.on('collect', (reaction, user) => {
+  console.log(`${user.username} reacted with ${reaction.emoji.name}`);
+  // Track feedback
+});
+```
+
+### Multi-Server Support
+
+Customize behavior per server:
+
+```typescript
+interface ServerConfig {
+  prefix?: string;
+  allowedChannels?: string[];
+  responseStyle?: string;
+}
+
+const serverConfigs = new Map<string, ServerConfig>();
+
+// Load config for server
+function getServerConfig(guildId: string): ServerConfig {
+  return serverConfigs.get(guildId) || {};
+}
+
+// Use in message handler
+const config = getServerConfig(message.guildId!);
+if (config.allowedChannels && !config.allowedChannels.includes(message.channelId)) {
+  return; // Skip if not in allowed channel
+}
+```
+
+### Voice Channel Integration
+
+```typescript
+import { joinVoiceChannel, createAudioPlayer } from "@discordjs/voice";
+
+// Join voice channel
+const connection = joinVoiceChannel({
+  channelId: voiceChannel.id,
+  guildId: voiceChannel.guild.id,
+  adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+});
+
+// Play audio response (text-to-speech)
+const player = createAudioPlayer();
+connection.subscribe(player);
+```
+
+### Moderation Features
+
+```typescript
+// Auto-moderation
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
+
+  // Check for inappropriate content
+  const isInappropriate = await runtime.useModel("TEXT_SMALL", {
+    prompt: `Is this message appropriate for a public Discord server? Answer only YES or NO.\n\nMessage: ${message.content}`,
+  });
+
+  if (String(isInappropriate).toUpperCase().includes("NO")) {
+    await message.delete();
+    await message.channel.send(
+      `${message.author}, please keep messages appropriate.`
+    );
+  }
+});
+```
+
+---
+
+## Environment Variables
+
+Create `.env` file:
+
+```bash
+DISCORD_BOT_TOKEN=your-discord-bot-token
+DISCORD_APPLICATION_ID=your-application-id
+OPENAI_API_KEY=your-openai-key
+```
+
+---
+
+## Bot Permissions
+
+Required Discord permissions:
+
+- **Read Messages/View Channels**: See messages in channels
+- **Send Messages**: Reply to messages
+- **Send Messages in Threads**: Participate in threads
+- **Read Message History**: Get conversation context
+- **Add Reactions**: React to messages
+- **Use Slash Commands**: Support slash commands
+
+---
+
+## Deployment
+
+### Using PM2
+
+```bash
+# Install PM2
+bun add -g pm2
+
+# Start bot
+pm2 start "bun run discord-bot.ts" --name eliza-bot
+
+# View logs
+pm2 logs eliza-bot
+
+# Restart
+pm2 restart eliza-bot
+```
+
+### Docker
+
+```dockerfile
+FROM oven/bun:1
+
+WORKDIR /app
+
+COPY package.json bun.lockb ./
+RUN bun install --frozen-lockfile
+
+COPY . .
+
+CMD ["bun", "run", "discord-bot.ts"]
+```
+
+Build and run:
+
+```bash
+docker build -t eliza-discord-bot .
+docker run -e DISCORD_BOT_TOKEN=$DISCORD_BOT_TOKEN \
+           -e OPENAI_API_KEY=$OPENAI_API_KEY \
+           eliza-discord-bot
+```
+
+---
+
+## Best Practices
+
+<Tip>
+**Rate Limiting**: Be mindful of Discord's rate limits - implement queues for high-traffic servers.
+</Tip>
+
+<Tip>
+**Message Length**: Keep responses under 2000 characters and split longer messages.
+</Tip>
+
+<Tip>
+**Context Awareness**: Use recent messages to provide contextual responses.
+</Tip>
+
+<Tip>
+**Error Handling**: Always handle errors gracefully and inform users.
+</Tip>
+
+<Tip>
+**Privacy**: Don't store sensitive information from DMs without consent.
+</Tip>
+
+---
+
+## Troubleshooting
+
+### Bot not responding
+
+1. Check bot has correct permissions
+2. Verify `GatewayIntentBits.MessageContent` is enabled
+3. Enable "Message Content Intent" in Developer Portal
+
+### "Missing Access" error
+
+- Bot needs permission to view/send in the channel
+- Check role hierarchy and channel permissions
+
+### Slow responses
+
+- Implement caching for common queries
+- Use smaller, faster models for simple responses
+- Consider response streaming
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Telegram Bot" icon="telegram" href="/examples/telegram-bot">
+    Build a Telegram bot with elizaOS
+  </Card>
+  <Card title="Twitter Agent" icon="twitter" href="/examples/twitter-agent">
+    Create an autonomous Twitter agent
+  </Card>
+  <Card title="Multi-Agent" icon="users" href="/examples/multi-agent">
+    Run multiple bots with different roles
+  </Card>
+  <Card title="Custom Character" icon="user" href="/examples/custom-character">
+    Create unique bot personalities
+  </Card>
+</CardGroup>

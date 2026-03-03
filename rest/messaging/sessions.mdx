@@ -1,0 +1,442 @@
+---
+title: Sessions
+description: Manage conversation sessions and user interactions
+api: GET /agents/{agentId}/sessions
+---
+
+## Overview
+
+Sessions represent active conversation contexts between users and agents. They track conversation state, user context, and interaction history across multiple messages.
+
+## List Sessions
+
+### Endpoint
+
+```
+GET /agents/{agentId}/sessions
+```
+
+Retrieves all active and recent sessions for an agent.
+
+### Request
+
+#### Path Parameters
+
+<ParamField path="agentId" type="string" required>
+  Unique identifier (UUID) of the agent
+</ParamField>
+
+#### Query Parameters
+
+<ParamField query="status" type="string">
+  Filter by session status: `active`, `idle`, `closed`
+</ParamField>
+
+<ParamField query="userId" type="string">
+  Filter by user ID
+</ParamField>
+
+<ParamField query="limit" type="number" default="50">
+  Maximum number of sessions to return
+</ParamField>
+
+<ParamField query="offset" type="number" default="0">
+  Number of sessions to skip
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="array" required>
+  Array of session objects
+  
+  <ResponseField name="data[].sessionId" type="string" required>
+    Unique session identifier (UUID)
+  </ResponseField>
+  
+  <ResponseField name="data[].agentId" type="string" required>
+    Agent ID
+  </ResponseField>
+  
+  <ResponseField name="data[].userId" type="string" required>
+    User ID
+  </ResponseField>
+  
+  <ResponseField name="data[].roomId" type="string" required>
+    Associated room ID
+  </ResponseField>
+  
+  <ResponseField name="data[].status" type="string" required>
+    Session status: `active`, `idle`, or `closed`
+  </ResponseField>
+  
+  <ResponseField name="data[].messageCount" type="number">
+    Number of messages in the session
+  </ResponseField>
+  
+  <ResponseField name="data[].createdAt" type="number">
+    Unix timestamp when session was created
+  </ResponseField>
+  
+  <ResponseField name="data[].lastActivityAt" type="number">
+    Unix timestamp of last activity
+  </ResponseField>
+  
+  <ResponseField name="data[].metadata" type="object">
+    Session metadata and context
+  </ResponseField>
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET "http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/sessions?status=active" \
+  -H "Content-Type: application/json"
+```
+
+### Response Example
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "sessionId": "session-880e8400-e29b-41d4-a716-446655440030",
+      "agentId": "550e8400-e29b-41d4-a716-446655440000",
+      "userId": "user-123",
+      "roomId": "room-660e8400-e29b-41d4-a716-446655440004",
+      "status": "active",
+      "messageCount": 8,
+      "createdAt": 1709683200000,
+      "lastActivityAt": 1709683800000,
+      "metadata": {
+        "channel": "web",
+        "topic": "customer-support"
+      }
+    }
+  ]
+}
+```
+
+## Get Session Details
+
+### Endpoint
+
+```
+GET /agents/{agentId}/sessions/{sessionId}
+```
+
+Retrieves detailed information about a specific session.
+
+### Request
+
+#### Path Parameters
+
+<ParamField path="agentId" type="string" required>
+  Unique identifier (UUID) of the agent
+</ParamField>
+
+<ParamField path="sessionId" type="string" required>
+  Unique identifier (UUID) of the session
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+  Session details including full context and conversation state
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/sessions/session-880e8400-e29b-41d4-a716-446655440030 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+## Create Session
+
+### Endpoint
+
+```
+POST /agents/{agentId}/sessions
+```
+
+Creates a new conversation session.
+
+### Request
+
+#### Body Parameters
+
+<ParamField body="userId" type="string" required>
+  User ID for the session
+</ParamField>
+
+<ParamField body="userName" type="string">
+  User display name
+</ParamField>
+
+<ParamField body="metadata" type="object">
+  Session metadata and context
+</ParamField>
+
+### Example
+
+```bash
+curl -X POST http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": "user-123",
+    "userName": "Alice Smith",
+    "metadata": {
+      "channel": "web",
+      "source": "landing-page"
+    }
+  }'
+```
+
+## Update Session
+
+### Endpoint
+
+```
+PUT /agents/{agentId}/sessions/{sessionId}
+```
+
+Updates session status or metadata.
+
+### Request
+
+#### Body Parameters
+
+<ParamField body="status" type="string">
+  New status: `active`, `idle`, or `closed`
+</ParamField>
+
+<ParamField body="metadata" type="object">
+  Updated metadata
+</ParamField>
+
+### Example
+
+```bash
+curl -X PUT http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/sessions/session-880e8400-e29b-41d4-a716-446655440030 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "closed"
+  }'
+```
+
+## Code Examples
+
+### JavaScript/Node.js
+
+```javascript
+const agentId = "550e8400-e29b-41d4-a716-446655440000";
+
+// List active sessions
+const listSessions = async () => {
+  const response = await fetch(
+    `http://localhost:3000/agents/${agentId}/sessions?status=active`,
+    {
+      headers: { 'Content-Type': 'application/json' }
+    }
+  );
+  
+  const { success, data } = await response.json();
+  
+  if (success) {
+    console.log(`Found ${data.length} active sessions`);
+    return data;
+  }
+};
+
+// Create a new session
+const createSession = async (userId, userName) => {
+  const response = await fetch(
+    `http://localhost:3000/agents/${agentId}/sessions`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        userName,
+        metadata: {
+          channel: 'web',
+          timestamp: Date.now()
+        }
+      })
+    }
+  );
+  
+  const { success, data } = await response.json();
+  
+  if (success) {
+    console.log(`Session created: ${data.sessionId}`);
+    return data;
+  }
+};
+
+// Close a session
+const closeSession = async (sessionId) => {
+  await fetch(
+    `http://localhost:3000/agents/${agentId}/sessions/${sessionId}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'closed' })
+    }
+  );
+};
+
+// Usage
+const sessions = await listSessions();
+const newSession = await createSession('user-123', 'Alice');
+await closeSession(newSession.sessionId);
+```
+
+### Python
+
+```python
+import requests
+
+agent_id = "550e8400-e29b-41d4-a716-446655440000"
+
+def list_sessions(status: str = "active"):
+    response = requests.get(
+        f'http://localhost:3000/agents/{agent_id}/sessions',
+        params={'status': status}
+    )
+    
+    data = response.json()
+    
+    if data['success']:
+        print(f"Found {len(data['data'])} sessions")
+        return data['data']
+
+def create_session(user_id: str, user_name: str):
+    response = requests.post(
+        f'http://localhost:3000/agents/{agent_id}/sessions',
+        json={
+            'userId': user_id,
+            'userName': user_name,
+            'metadata': {
+                'channel': 'web'
+            }
+        }
+    )
+    
+    data = response.json()
+    
+    if data['success']:
+        print(f"Session created: {data['data']['sessionId']}")
+        return data['data']
+
+def close_session(session_id: str):
+    requests.put(
+        f'http://localhost:3000/agents/{agent_id}/sessions/{session_id}',
+        json={'status': 'closed'}
+    )
+
+# Usage
+sessions = list_sessions('active')
+new_session = create_session('user-123', 'Alice')
+close_session(new_session['sessionId'])
+```
+
+### TypeScript
+
+```typescript
+interface Session {
+  sessionId: string;
+  agentId: string;
+  userId: string;
+  roomId: string;
+  status: 'active' | 'idle' | 'closed';
+  messageCount?: number;
+  createdAt?: number;
+  lastActivityAt?: number;
+  metadata?: Record<string, any>;
+}
+
+class SessionManager {
+  constructor(private agentId: string, private baseUrl: string) {}
+  
+  async listSessions(status?: string): Promise<Session[]> {
+    const params = status ? `?status=${status}` : '';
+    const response = await fetch(
+      `${this.baseUrl}/agents/${this.agentId}/sessions${params}`
+    );
+    
+    const { success, data } = await response.json();
+    return success ? data : [];
+  }
+  
+  async createSession(userId: string, userName: string): Promise<Session> {
+    const response = await fetch(
+      `${this.baseUrl}/agents/${this.agentId}/sessions`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, userName })
+      }
+    );
+    
+    const { success, data } = await response.json();
+    return data;
+  }
+  
+  async closeSession(sessionId: string): Promise<void> {
+    await fetch(
+      `${this.baseUrl}/agents/${this.agentId}/sessions/${sessionId}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'closed' })
+      }
+    );
+  }
+}
+
+// Usage
+const manager = new SessionManager(
+  "550e8400-e29b-41d4-a716-446655440000",
+  "http://localhost:3000"
+);
+
+const sessions = await manager.listSessions('active');
+const newSession = await manager.createSession('user-123', 'Alice');
+await manager.closeSession(newSession.sessionId);
+```
+
+## Session Lifecycle
+
+1. **Created** - New session initialized
+2. **Active** - User is actively messaging
+3. **Idle** - No recent activity (configurable timeout)
+4. **Closed** - Session explicitly closed or expired
+
+## Auto-Cleanup
+
+Sessions automatically transition to `idle` after inactivity and can be configured to close after a timeout period.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Send Message" icon="paper-plane" href="/rest/messaging/send-message">
+    Send messages within a session
+  </Card>
+  <Card title="Get Messages" icon="list" href="/rest/messaging/get-messages">
+    Retrieve session message history
+  </Card>
+  <Card title="Create Channel" icon="hashtag" href="/rest/messaging/create-channel">
+    Set up communication channels
+  </Card>
+</CardGroup>

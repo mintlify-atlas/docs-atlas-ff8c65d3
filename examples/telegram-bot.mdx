@@ -1,0 +1,565 @@
+---
+title: "Telegram Bot"
+description: "Deploy your elizaOS agent as a Telegram bot"
+---
+
+Create an AI-powered Telegram bot that can chat with users, respond to commands, and handle group conversations. This example shows how to integrate elizaOS with Telegram's Bot API.
+
+## Overview
+
+Telegram bots can provide instant AI assistance, automate tasks, and interact with users through text, images, and inline keyboards.
+
+**What you'll learn:**
+- Create and configure a Telegram bot
+- Handle messages and commands
+- Support both private chats and groups
+- Implement inline keyboards
+- Send media and formatted messages
+
+---
+
+## Quick Start
+
+<Steps>
+  <Step title="Create Bot with BotFather">
+    1. Open Telegram and search for [@BotFather](https://t.me/botfather)
+    2. Send `/newbot` command
+    3. Follow instructions to choose a name and username
+    4. Copy the API token provided
+  </Step>
+  
+  <Step title="Install Dependencies">
+    ```bash
+    bun add @elizaos/core @elizaos/plugin-openai @elizaos/plugin-sql telegraf uuid
+    ```
+  </Step>
+  
+  <Step title="Create Bot">
+    Create `telegram-bot.ts` with bot code
+  </Step>
+  
+  <Step title="Run Bot">
+    ```bash
+    export TELEGRAM_BOT_TOKEN="your-token"
+    export OPENAI_API_KEY="your-key"
+    bun run telegram-bot.ts
+    ```
+  </Step>
+  
+  <Step title="Start Chatting">
+    Find your bot on Telegram and send `/start`
+  </Step>
+</Steps>
+
+---
+
+## Complete Bot Code
+
+```typescript telegram-bot.ts
+import { Telegraf, Context } from "telegraf";
+import { message } from "telegraf/filters";
+import {
+  AgentRuntime,
+  createMessageMemory,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import { v4 as uuidv4 } from "uuid";
+
+// Character definition
+const character = {
+  name: "Eliza",
+  username: "eliza_bot",
+  bio: "A helpful AI assistant for Telegram.",
+  system: `You are Eliza, a friendly AI assistant on Telegram.
+
+Behavior:
+- Be helpful, friendly, and concise
+- Keep responses under 4000 characters (Telegram limit)
+- Use Telegram markdown formatting (bold, italic, code)
+- Acknowledge whether you're in a private chat or group
+- Be conversational and engaging
+
+When responding:
+- For simple questions, give brief answers
+- For complex topics, offer to elaborate
+- Use emoji occasionally to be friendly 😊
+- In groups, be aware of the conversation context`,
+};
+
+console.log("🚀 Initializing Eliza Telegram Bot...");
+
+// Initialize elizaOS runtime
+const runtime = new AgentRuntime({
+  character,
+  plugins: [sqlPlugin, openaiPlugin],
+});
+
+await runtime.initialize();
+console.log("✅ Runtime initialized");
+
+// Initialize Telegram bot
+const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN!);
+
+// Start command
+bot.command("start", async (ctx) => {
+  const welcomeMessage = `Welcome! 👋\n\nI'm ${character.name}, your AI assistant. I'm here to help answer questions, have conversations, and assist with various tasks.\n\n**Commands:**\n/help - Show available commands\n/chat - Start a conversation\n/clear - Clear conversation history\n\nJust send me a message to get started!`;
+
+  await ctx.reply(welcomeMessage, { parse_mode: "Markdown" });
+});
+
+// Help command
+bot.command("help", async (ctx) => {
+  const helpMessage = `**How to use ${character.name}:**\n\n• Simply send me any message and I'll respond\n• I can answer questions, have conversations, and help with tasks\n• In groups, mention me or reply to my messages\n\n**Commands:**\n/start - Welcome message\n/help - This help message\n/chat - Start a conversation\n/clear - Clear your conversation history\n\n**Tips:**\n• I remember our conversation context\n• You can ask follow-up questions\n• I work in both private chats and groups`;
+
+  await ctx.reply(helpMessage, { parse_mode: "Markdown" });
+});
+
+// Clear command
+bot.command("clear", async (ctx) => {
+  // In a real implementation, clear the user's conversation history
+  await ctx.reply("Conversation history cleared! 🧹\n\nLet's start fresh.");
+});
+
+// Chat command
+bot.command("chat", async (ctx) => {
+  await ctx.reply(
+    "Ready to chat! Just send me a message. 💬"
+  );
+});
+
+// Handle all text messages
+bot.on(message("text"), async (ctx) => {
+  try {
+    // Ignore commands (already handled above)
+    if (ctx.message.text.startsWith("/")) return;
+
+    // Show typing indicator
+    await ctx.sendChatAction("typing");
+
+    // Get user and chat info
+    const userId = ctx.from.id.toString();
+    const chatId = ctx.chat.id.toString();
+    const isGroup = ctx.chat.type === "group" || ctx.chat.type === "supergroup";
+    const userMessage = ctx.message.text;
+
+    // In groups, only respond to mentions or replies
+    if (isGroup) {
+      const botUsername = ctx.botInfo.username;
+      const isMentioned = userMessage.includes(`@${botUsername}`);
+      const isReply = ctx.message.reply_to_message?.from?.id === ctx.botInfo.id;
+
+      if (!isMentioned && !isReply) {
+        return; // Ignore message in group
+      }
+    }
+
+    // Build context
+    const context = isGroup
+      ? `Group chat: ${ctx.chat.title || "Unknown"}\nUser: ${ctx.from.first_name || "Unknown"}`
+      : `Private chat with: ${ctx.from.first_name || "Unknown"}`;
+
+    const fullMessage = `${context}\n\nUser message: ${userMessage}`;
+
+    // Create message for elizaOS
+    const messageMemory = createMessageMemory({
+      id: uuidv4() as UUID,
+      entityId: stringToUuid(userId),
+      roomId: stringToUuid(chatId),
+      content: { text: fullMessage },
+    });
+
+    // Get response from elizaOS
+    let response = "";
+    await runtime.messageService!.handleMessage(
+      runtime,
+      messageMemory,
+      async (content) => {
+        if (content?.text) {
+          response += content.text;
+        }
+        return [];
+      }
+    );
+
+    // Telegram message length limit is 4096
+    if (response.length > 4000) {
+      // Split into chunks
+      const chunks = splitMessage(response, 4000);
+      for (const chunk of chunks) {
+        await ctx.reply(chunk, { parse_mode: "Markdown" });
+      }
+    } else {
+      await ctx.reply(response, { parse_mode: "Markdown" });
+    }
+  } catch (error) {
+    console.error("Error handling message:", error);
+    await ctx.reply(
+      "Sorry, I encountered an error processing your message. Please try again. 😕"
+    );
+  }
+});
+
+// Split long messages
+function splitMessage(text: string, maxLength: number): string[] {
+  if (text.length <= maxLength) return [text];
+
+  const chunks: string[] = [];
+  let currentChunk = "";
+
+  const paragraphs = text.split("\n");
+
+  for (const paragraph of paragraphs) {
+    if (currentChunk.length + paragraph.length + 1 > maxLength) {
+      if (currentChunk) chunks.push(currentChunk.trim());
+      currentChunk = paragraph;
+    } else {
+      currentChunk += (currentChunk ? "\n" : "") + paragraph;
+    }
+  }
+
+  if (currentChunk) chunks.push(currentChunk.trim());
+
+  return chunks;
+}
+
+// Handle inline queries (for inline mode)
+bot.on("inline_query", async (ctx) => {
+  const query = ctx.inlineQuery.query;
+
+  if (!query) {
+    return ctx.answerInlineQuery([]);
+  }
+
+  // Get quick response
+  const messageMemory = createMessageMemory({
+    id: uuidv4() as UUID,
+    entityId: stringToUuid(ctx.from.id.toString()),
+    roomId: stringToUuid("inline"),
+    content: { text: query },
+  });
+
+  let response = "";
+  await runtime.messageService!.handleMessage(
+    runtime,
+    messageMemory,
+    async (content) => {
+      if (content?.text) {
+        response += content.text;
+      }
+      return [];
+    }
+  );
+
+  // Return inline result
+  await ctx.answerInlineQuery([
+    {
+      type: "article",
+      id: "1",
+      title: "Eliza's Response",
+      description: response.slice(0, 100) + "...",
+      input_message_content: {
+        message_text: response,
+        parse_mode: "Markdown",
+      },
+    },
+  ]);
+});
+
+// Error handling
+bot.catch((err, ctx) => {
+  console.error("Bot error:", err);
+  ctx.reply("An error occurred. Please try again later.");
+});
+
+// Graceful shutdown
+process.once("SIGINT", () => {
+  console.log("\n🚦 Shutting down...");
+  bot.stop("SIGINT");
+  runtime.stop();
+});
+
+process.once("SIGTERM", () => {
+  console.log("\n🚦 Shutting down...");
+  bot.stop("SIGTERM");
+  runtime.stop();
+});
+
+// Launch bot
+console.log("✅ Starting bot...");
+bot.launch();
+console.log("🤖 Bot is running!\n");
+```
+
+---
+
+## Advanced Features
+
+### Inline Keyboards
+
+Add interactive buttons:
+
+```typescript
+import { Markup } from "telegraf";
+
+bot.command("menu", async (ctx) => {
+  await ctx.reply(
+    "Choose an option:",
+    Markup.inlineKeyboard([
+      [Markup.button.callback("Ask a Question", "ask")],
+      [Markup.button.callback("Get Help", "help")],
+      [Markup.button.callback("Settings", "settings")],
+    ])
+  );
+});
+
+// Handle button clicks
+bot.action("ask", async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.reply("What would you like to know?");
+});
+
+bot.action("help", async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.reply("Here's how I can help...");
+});
+```
+
+### Send Images
+
+```typescript
+bot.command("image", async (ctx) => {
+  // Generate image description
+  const description = await runtime.useModel("TEXT_SMALL", {
+    prompt: "Describe a beautiful sunset over mountains",
+  });
+
+  // Send image with caption
+  await ctx.replyWithPhoto(
+    { url: "https://example.com/sunset.jpg" },
+    { caption: String(description) }
+  );
+});
+```
+
+### Voice Message Support
+
+```typescript
+import { message } from "telegraf/filters";
+
+bot.on(message("voice"), async (ctx) => {
+  await ctx.reply(
+    "I received your voice message! However, I currently only support text. 🎤😊"
+  );
+  // In a full implementation, you would:
+  // 1. Download the voice file
+  // 2. Transcribe it using speech-to-text
+  // 3. Process as text message
+});
+```
+
+### Document Processing
+
+```typescript
+bot.on(message("document"), async (ctx) => {
+  const doc = ctx.message.document;
+
+  if (doc.mime_type === "text/plain") {
+    // Download and process text file
+    const fileLink = await ctx.telegram.getFileLink(doc.file_id);
+    const response = await fetch(fileLink.href);
+    const text = await response.text();
+
+    await ctx.reply(`I received your document. It contains ${text.length} characters.`);
+  } else {
+    await ctx.reply("I can only process text files at the moment.");
+  }
+});
+```
+
+### Polls and Surveys
+
+```typescript
+bot.command("poll", async (ctx) => {
+  await ctx.replyWithPoll(
+    "How satisfied are you with my assistance?",
+    ["Very satisfied", "Satisfied", "Neutral", "Unsatisfied"],
+    {
+      is_anonymous: false,
+    }
+  );
+});
+
+bot.on("poll_answer", (ctx) => {
+  console.log("Poll answer:", ctx.pollAnswer);
+});
+```
+
+### Group Administration
+
+```typescript
+bot.command("stats", async (ctx) => {
+  if (ctx.chat.type !== "group" && ctx.chat.type !== "supergroup") {
+    return ctx.reply("This command only works in groups.");
+  }
+
+  const memberCount = await ctx.getChatMembersCount();
+  await ctx.reply(`This group has ${memberCount} members.`);
+});
+```
+
+---
+
+## Bot Configuration
+
+### Set Bot Commands
+
+Register commands in Telegram:
+
+```typescript
+await bot.telegram.setMyCommands([
+  { command: "start", description: "Start the bot" },
+  { command: "help", description: "Show help message" },
+  { command: "chat", description: "Start a conversation" },
+  { command: "clear", description: "Clear conversation history" },
+]);
+```
+
+### Enable Inline Mode
+
+Talk to [@BotFather](https://t.me/botfather):
+1. Send `/setinline`
+2. Select your bot
+3. Send a placeholder text (e.g., "Search...")
+
+### Privacy Settings
+
+Configure privacy with BotFather:
+- `/setprivacy` - Set privacy mode
+- `/setjoingroups` - Allow/disallow adding to groups
+- `/setcommands` - Set command list
+
+---
+
+## Deployment
+
+### Using PM2
+
+```bash
+pm2 start "bun run telegram-bot.ts" --name eliza-telegram
+pm2 save
+pm2 startup
+```
+
+### Docker
+
+```dockerfile
+FROM oven/bun:1
+
+WORKDIR /app
+
+COPY package.json bun.lockb ./
+RUN bun install --frozen-lockfile
+
+COPY . .
+
+CMD ["bun", "run", "telegram-bot.ts"]
+```
+
+```bash
+docker build -t eliza-telegram .
+docker run -d \
+  -e TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN \
+  -e OPENAI_API_KEY=$OPENAI_API_KEY \
+  --name eliza-telegram \
+  eliza-telegram
+```
+
+### Webhook Mode (for production)
+
+```typescript
+import express from "express";
+
+const app = express();
+app.use(express.json());
+
+// Set webhook
+const WEBHOOK_DOMAIN = "https://yourdomain.com";
+const WEBHOOK_PATH = "/telegram-webhook";
+
+await bot.telegram.setWebhook(`${WEBHOOK_DOMAIN}${WEBHOOK_PATH}`);
+
+// Handle webhook
+app.post(WEBHOOK_PATH, (req, res) => {
+  bot.handleUpdate(req.body, res);
+});
+
+app.listen(3000, () => {
+  console.log("Webhook server running on port 3000");
+});
+```
+
+---
+
+## Best Practices
+
+<Tip>
+**Message Formatting**: Use Telegram's markdown for better readability.
+</Tip>
+
+<Tip>
+**Response Time**: Show typing indicators for better UX during processing.
+</Tip>
+
+<Tip>
+**Group Behavior**: Only respond when mentioned in groups to avoid spam.
+</Tip>
+
+<Tip>
+**Error Messages**: Provide friendly error messages with emoji.
+</Tip>
+
+<Tip>
+**Rate Limits**: Telegram has rate limits - implement queuing for busy bots.
+</Tip>
+
+---
+
+## Troubleshooting
+
+### Bot not responding
+
+- Verify token is correct
+- Check bot is not blocked by user
+- Ensure bot has permission to send messages in group
+
+### "Conflict: terminated by other getUpdates"
+
+- Another instance is running
+- Stop all instances and restart
+
+### Messages not received in groups
+
+- Check privacy mode is disabled (via BotFather)
+- Bot needs to be admin for some features
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Discord Bot" icon="discord" href="/examples/discord-bot">
+    Build a Discord bot with elizaOS
+  </Card>
+  <Card title="Twitter Agent" icon="twitter" href="/examples/twitter-agent">
+    Create an autonomous Twitter agent
+  </Card>
+  <Card title="Multi-Agent" icon="users" href="/examples/multi-agent">
+    Run multiple specialized bots
+  </Card>
+  <Card title="Custom Character" icon="user" href="/examples/custom-character">
+    Create unique bot personalities
+  </Card>
+</CardGroup>

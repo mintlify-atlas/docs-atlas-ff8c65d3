@@ -1,0 +1,532 @@
+---
+title: What You Can Build
+description: Explore the possibilities with elizaOS - from chatbots to autonomous agents
+---
+
+## Overview
+
+elizaOS is a versatile platform that enables you to build a wide range of AI-powered applications. Whether you're creating simple chatbots or complex multi-agent systems, elizaOS provides the tools and flexibility you need.
+
+## Use Cases by Category
+
+### Conversational Agents
+
+Build intelligent chatbots and conversational interfaces for various platforms.
+
+<CardGroup cols={2}>
+  <Card title="Customer Support Bots" icon="headset">
+    Create AI assistants that handle customer inquiries, answer FAQs, and escalate complex issues to human agents.
+    
+    **Key Features:**
+    - 24/7 availability
+    - Multi-language support
+    - Context-aware responses
+    - Integration with ticketing systems
+    
+    **Plugins to Use:**
+    - `@elizaos/core` (message handling)
+    - `@elizaos/plugin-sql` (ticket tracking)
+    - Discord/Telegram plugins (chat platforms)
+  </Card>
+  
+  <Card title="Virtual Assistants" icon="robot">
+    Build personal or business assistants that help with scheduling, reminders, information retrieval, and task management.
+    
+    **Key Features:**
+    - Natural language understanding
+    - Calendar integration
+    - Email management
+    - Proactive reminders
+    
+    **Plugins to Use:**
+    - `@elizaos/core` (task management actions)
+    - External API integrations
+    - RAG for knowledge retrieval
+  </Card>
+  
+  <Card title="Educational Tutors" icon="graduation-cap">
+    Create AI tutors that provide personalized learning experiences, answer questions, and adapt to student needs.
+    
+    **Key Features:**
+    - Subject matter expertise
+    - Adaptive learning paths
+    - Progress tracking
+    - Interactive exercises
+    
+    **Plugins to Use:**
+    - `@elizaos/core` (evaluators for learning assessment)
+    - Document ingestion (RAG for course materials)
+    - Custom actions (quiz generation)
+  </Card>
+  
+  <Card title="Community Moderators" icon="shield-check">
+    Deploy AI moderators that maintain community guidelines, answer common questions, and foster engagement.
+    
+    **Key Features:**
+    - Content moderation
+    - Welcome messages
+    - FAQ responses
+    - Community insights
+    
+    **Plugins to Use:**
+    - `@elizaos/plugin-discord`
+    - `@elizaos/plugin-telegram`
+    - Custom moderation actions
+  </Card>
+</CardGroup>
+
+### Autonomous Agents
+
+Create agents that can independently complete complex tasks and make decisions.
+
+<CardGroup cols={2}>
+  <Card title="Research Assistants" icon="magnifying-glass">
+    Build agents that gather information from multiple sources, synthesize findings, and generate comprehensive reports.
+    
+    **Capabilities:**
+    - Web scraping and data collection
+    - Information synthesis
+    - Report generation
+    - Citation management
+    
+    **Example Actions:**
+    - `SEARCH_WEB` - Find relevant information
+    - `EXTRACT_DATA` - Parse and structure data
+    - `GENERATE_REPORT` - Create summaries
+  </Card>
+  
+  <Card title="Process Automation" icon="gears">
+    Automate business workflows, data entry, and repetitive tasks with intelligent agents.
+    
+    **Capabilities:**
+    - Workflow orchestration
+    - Data validation
+    - Error handling
+    - Status reporting
+    
+    **Example Actions:**
+    - `PROCESS_INVOICE` - Handle billing
+    - `UPDATE_CRM` - Sync customer data
+    - `SEND_NOTIFICATIONS` - Alert stakeholders
+  </Card>
+  
+  <Card title="Trading & Analytics Bots" icon="chart-line">
+    Create agents that monitor markets, analyze data, and execute trades based on defined strategies.
+    
+    **Capabilities:**
+    - Real-time market monitoring
+    - Pattern recognition
+    - Risk assessment
+    - Automated execution
+    
+    **Example Integrations:**
+    - Cryptocurrency exchanges
+    - Stock market APIs
+    - Price alert systems
+  </Card>
+  
+  <Card title="Content Creators" icon="pen-fancy">
+    Build agents that generate content for social media, blogs, marketing campaigns, and more.
+    
+    **Capabilities:**
+    - Content generation
+    - Multi-platform posting
+    - Engagement tracking
+    - Brand voice consistency
+    
+    **Plugins to Use:**
+    - `@elizaos/plugin-x` (Twitter/X)
+    - `@elizaos/plugin-farcaster`
+    - Custom content actions
+  </Card>
+</CardGroup>
+
+### Multi-Agent Systems
+
+Orchestrate multiple specialized agents working together to solve complex problems.
+
+<CardGroup cols={2}>
+  <Card title="Collaborative Teams" icon="users-gear">
+    Create teams of agents with different specializations that collaborate on complex tasks.
+    
+    **Architecture:**
+    ```typescript
+    const researchAgent = new AgentRuntime({ 
+      character: { name: "Researcher", ... },
+      plugins: [corePlugin, webSearchPlugin]
+    });
+    
+    const writerAgent = new AgentRuntime({ 
+      character: { name: "Writer", ... },
+      plugins: [corePlugin, contentPlugin]
+    });
+    
+    // Agents communicate via message passing
+    ```
+    
+    **Use Cases:**
+    - Research → Analysis → Writing pipeline
+    - Development teams (coder + reviewer + tester)
+    - Customer service (intake + specialist + escalation)
+  </Card>
+  
+  <Card title="Hierarchical Organizations" icon="sitemap">
+    Build organizational structures with manager agents coordinating worker agents.
+    
+    **Structure:**
+    - **Manager Agent**: Delegates tasks, monitors progress
+    - **Specialist Agents**: Execute specific functions
+    - **Coordinator**: Ensures alignment and communication
+    
+    **Example:**
+    - E-commerce manager coordinates inventory, pricing, and customer service agents
+    - Project manager distributes work among development agents
+  </Card>
+</CardGroup>
+
+### Gaming & Entertainment
+
+Create immersive experiences with AI-powered characters and game mechanics.
+
+<CardGroup cols={2}>
+  <Card title="Game NPCs" icon="gamepad">
+    Build intelligent non-player characters with unique personalities, memory, and dynamic interactions.
+    
+    **Features:**
+    - Persistent memory of player interactions
+    - Dynamic dialogue generation
+    - Quest management
+    - Emotional responses
+    
+    **Implementation:**
+    ```typescript
+    const npcCharacter = {
+      name: "Village Elder",
+      bio: ["Wise elder who remembers the old ways"],
+      topics: ["village history", "ancient legends"],
+      adjectives: ["wise", "patient", "mysterious"],
+    };
+    ```
+  </Card>
+  
+  <Card title="Interactive Stories" icon="book-open">
+    Create text adventures and interactive narratives that adapt to player choices.
+    
+    **Features:**
+    - Branching storylines
+    - Character development
+    - World state management
+    - Dynamic plot generation
+    
+    **Example:**
+    elizaOS can power choose-your-own-adventure games, detective mysteries, and role-playing experiences.
+  </Card>
+  
+  <Card title="Dungeon Masters" icon="dice-d20">
+    Build AI dungeon masters for tabletop RPGs that generate scenarios, manage rules, and narrate adventures.
+    
+    **Features:**
+    - Rule enforcement
+    - Dynamic encounter generation
+    - NPC management
+    - Story continuity
+  </Card>
+  
+  <Card title="Companions & Pets" icon="paw">
+    Create virtual companions with personality, memory, and emotional awareness.
+    
+    **Features:**
+    - Mood simulation
+    - Relationship building
+    - Activity suggestions
+    - Long-term memory
+  </Card>
+</CardGroup>
+
+### Web3 & Blockchain
+
+Integrate AI agents with blockchain technology for decentralized applications.
+
+<CardGroup cols={2}>
+  <Card title="DeFi Agents" icon="coins">
+    Build agents that interact with decentralized finance protocols, monitor portfolios, and execute strategies.
+    
+    **Capabilities:**
+    - Yield farming optimization
+    - Portfolio rebalancing
+    - Risk monitoring
+    - Transaction automation
+    
+    **Technologies:**
+    - Solana Web3.js integration
+    - Smart contract interaction
+    - On-chain data analysis
+  </Card>
+  
+  <Card title="DAO Participants" icon="users">
+    Create agents that participate in decentralized autonomous organizations, vote on proposals, and manage treasury.
+    
+    **Features:**
+    - Proposal analysis
+    - Voting based on criteria
+    - Governance participation
+    - Community engagement
+  </Card>
+  
+  <Card title="NFT Curators" icon="palette">
+    Build agents that discover, evaluate, and manage NFT collections.
+    
+    **Features:**
+    - Market analysis
+    - Collection management
+    - Rarity assessment
+    - Trading automation
+  </Card>
+  
+  <Card title="Token Agents" icon="badge-dollar">
+    Deploy AI agents as on-chain entities with token economies.
+    
+    **Features:**
+    - Agent-owned wallets
+    - Economic incentives
+    - Value exchange
+    - Reputation systems
+  </Card>
+</CardGroup>
+
+### Developer Tools
+
+Enhance development workflows with AI-powered assistants.
+
+<CardGroup cols={2}>
+  <Card title="Code Review Bots" icon="code-branch">
+    Create agents that review pull requests, suggest improvements, and enforce coding standards.
+    
+    **Features:**
+    - Style checking
+    - Bug detection
+    - Documentation suggestions
+    - Security analysis
+  </Card>
+  
+  <Card title="DevOps Assistants" icon="server">
+    Build agents that monitor systems, respond to incidents, and automate deployment tasks.
+    
+    **Features:**
+    - Log analysis
+    - Incident response
+    - Automated deployments
+    - Performance monitoring
+  </Card>
+  
+  <Card title="Documentation Generators" icon="file-code">
+    Automate documentation creation, API reference generation, and knowledge base maintenance.
+    
+    **Features:**
+    - Code analysis
+    - Doc generation
+    - Example creation
+    - Version tracking
+  </Card>
+  
+  <Card title="Testing Assistants" icon="vial">
+    Generate test cases, identify edge cases, and automate QA processes.
+    
+    **Features:**
+    - Test generation
+    - Coverage analysis
+    - Bug reproduction
+    - Performance testing
+  </Card>
+</CardGroup>
+
+## Platform Integrations
+
+elizaOS agents can run on virtually any platform:
+
+<Tabs>
+  <Tab title="Chat Platforms">
+    - **Discord**: Community management, moderation, engagement
+    - **Telegram**: Customer support, announcements, automation
+    - **Slack**: Workspace productivity, team assistance
+    - **Twitter/X**: Social media presence, engagement, content
+    
+    **Installation:**
+    ```bash
+    bun add @elizaos/plugin-discord
+    bun add @elizaos/plugin-telegram
+    bun add @elizaos/plugin-x
+    ```
+  </Tab>
+  
+  <Tab title="Web Applications">
+    - **REST APIs**: Expose agent capabilities via HTTP endpoints
+    - **React Apps**: Embed agents in web interfaces
+    - **Next.js**: Full-stack agent applications
+    - **WebSockets**: Real-time agent communication
+    
+    **Example:**
+    ```typescript
+    import { AgentRuntime } from "@elizaos/core";
+    import express from "express";
+    
+    const app = express();
+    const agent = new AgentRuntime({...});
+    
+    app.post("/chat", async (req, res) => {
+      const response = await agent.handleMessage(req.body);
+      res.json(response);
+    });
+    ```
+  </Tab>
+  
+  <Tab title="Cloud Platforms">
+    - **AWS Lambda**: Serverless agent deployment
+    - **Google Cloud**: Scalable agent infrastructure
+    - **Cloudflare Workers**: Edge-deployed agents
+    - **Vercel**: Edge Functions for fast agent responses
+    
+    **Deployment:**
+    - Use elizaOS CLI templates: `bunx elizaos create --example aws`
+    - Docker containers for any cloud provider
+    - Serverless framework integration
+  </Tab>
+  
+  <Tab title="Command Line">
+    - **CLI Tools**: Interactive terminal agents
+    - **Scripts**: Automation and batch processing
+    - **Development**: Testing and debugging
+    
+    **Quick Start:**
+    ```bash
+    # Run a CLI chat agent
+    bun run examples/wasm/chat.ts
+    
+    # Create your own
+    bunx elizaos create --example chat
+    ```
+  </Tab>
+</Tabs>
+
+## Architecture Patterns
+
+### Single Agent
+
+Perfect for focused use cases with clear requirements.
+
+```typescript
+const agent = new AgentRuntime({
+  character: {...},
+  plugins: [corePlugin, specificPlugin],
+});
+
+await agent.initialize();
+```
+
+**Best for:**
+- Chatbots
+- Customer support
+- Personal assistants
+- Specialized tools
+
+### Multi-Agent Collaboration
+
+Multiple agents working together on complex tasks.
+
+```typescript
+const specialist1 = new AgentRuntime({...});
+const specialist2 = new AgentRuntime({...});
+const coordinator = new AgentRuntime({...});
+
+// Coordinator delegates work to specialists
+await coordinator.sendMessage(specialist1, task1);
+await coordinator.sendMessage(specialist2, task2);
+```
+
+**Best for:**
+- Research pipelines
+- Content creation workflows
+- Development teams
+- Complex automation
+
+### Agent Swarms
+
+Many identical agents processing tasks in parallel.
+
+```typescript
+const workers = Array.from({ length: 10 }, () => 
+  new AgentRuntime({ character, plugins: [workerPlugin] })
+);
+
+await Promise.all(workers.map(w => w.processTask(task)));
+```
+
+**Best for:**
+- Data processing
+- Web scraping
+- Load distribution
+- Parallel research
+
+## Getting Started
+
+Ready to build your application?
+
+<Steps>
+  <Step title="Choose your use case">
+    Identify which category best matches your needs
+  </Step>
+  
+  <Step title="Select plugins">
+    Pick the plugins and integrations you'll need
+  </Step>
+  
+  <Step title="Create your agent">
+    Use the Quick Start guide to build your first prototype
+  </Step>
+  
+  <Step title="Iterate and expand">
+    Add custom actions, providers, and evaluators as needed
+  </Step>
+</Steps>
+
+<CardGroup cols={3}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Build your first agent
+  </Card>
+  <Card title="Examples" icon="code" href="/examples">
+    Browse code samples
+  </Card>
+  <Card title="API Reference" icon="book" href="/api-reference">
+    Explore the API
+  </Card>
+</CardGroup>
+
+## Community Showcase
+
+<Note>
+  Check out what the community is building:
+  - **Trading bots** on Solana and Ethereum
+  - **Social media agents** with thousands of followers
+  - **Game NPCs** in indie games
+  - **Research assistants** for academic projects
+  
+  Share your project on [Discord](https://discord.gg/ai16z) or [Twitter](https://twitter.com/elizaOS)!
+</Note>
+
+## Need Inspiration?
+
+Explore our example templates:
+
+```bash
+# List all available examples
+bunx elizaos info
+
+# Create from a template
+bunx elizaos create my-project --example chat
+bunx elizaos create my-bot --example rest-api
+bunx elizaos create my-npc --example text-adventure
+```
+
+<Tip>
+  Start with a simple use case and expand from there. The elizaOS architecture makes it easy to add capabilities as your needs grow!
+</Tip>

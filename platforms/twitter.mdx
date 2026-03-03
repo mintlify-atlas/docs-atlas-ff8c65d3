@@ -1,0 +1,461 @@
+---
+title: Twitter (X) Integration
+description: Connect your elizaOS agent to Twitter/X for social media engagement
+---
+
+## Overview
+
+The Twitter (X) integration enables your elizaOS agent to interact on Twitter, posting tweets, replying to mentions, liking content, and managing your social presence. This integration uses Twitter's API and authentication system.
+
+## Prerequisites
+
+Before setting up Twitter integration, you need:
+
+- A Twitter/X account
+- Elevated API access (required for posting)
+- Twitter Developer Account and API credentials
+- 2FA enabled on your account (recommended)
+
+## Setup
+
+<Steps>
+
+### Apply for Twitter Developer Access
+
+1. Go to [Twitter Developer Portal](https://developer.twitter.com/)
+2. Sign in with your Twitter account
+3. Click "Sign up for Free Account" or "Apply" for a Developer Account
+4. Fill out the application form describing your use case
+5. Wait for approval (usually 1-2 business days)
+
+### Create a Twitter App
+
+1. Once approved, go to the [Developer Portal](https://developer.twitter.com/en/portal/dashboard)
+2. Click "+ Create Project" or "Create App"
+3. Enter your app name and description
+4. Select your use case
+5. Complete the app setup
+
+### Get API Credentials
+
+1. In your app settings, go to "Keys and tokens"
+2. Generate/view the following:
+   - **API Key** (Consumer Key)
+   - **API Secret** (Consumer Secret)
+   - **Access Token**
+   - **Access Token Secret**
+3. Copy these values - you'll need them for configuration
+
+<Warning>
+Store these credentials securely. Never commit them to version control or share them publicly.
+</Warning>
+
+### Request Elevated Access
+
+To post tweets and interact fully, you need Elevated access:
+
+1. In the Developer Portal, go to "Products" > "Twitter API v2"
+2. Click "Elevated" and apply
+3. Describe your use case
+4. Wait for approval
+
+### Set Environment Variables
+
+Add the following to your `.env` file:
+
+```bash
+# Required
+TWITTER_USERNAME=your_twitter_username
+TWITTER_PASSWORD=your_twitter_password
+
+# Optional but recommended
+TWITTER_EMAIL=your_email@example.com
+TWITTER_2FA_SECRET=your_2fa_secret_here
+```
+
+<Note>
+The Twitter integration uses username/password authentication. If you have 2FA enabled (recommended), you'll need to provide your 2FA secret.
+</Note>
+
+### Add the Twitter Plugin
+
+In your character configuration file, add the Twitter plugin:
+
+```json
+{
+  "name": "YourAgent",
+  "plugins": [
+    "@elizaos/plugin-twitter"
+  ],
+  "settings": {
+    "channels": {
+      "twitter": {
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+</Steps>
+
+## Configuration
+
+### Environment Variables
+
+The Twitter integration uses the following environment variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `TWITTER_USERNAME` | Yes | Your Twitter username (without @) |
+| `TWITTER_PASSWORD` | Yes | Your Twitter password |
+| `TWITTER_EMAIL` | No | Your email (helpful for account recovery) |
+| `TWITTER_2FA_SECRET` | No | Your 2FA secret key (if 2FA is enabled) |
+
+### Character Settings
+
+Configure Twitter-specific behavior:
+
+```json
+{
+  "settings": {
+    "channels": {
+      "twitter": {
+        "enabled": true,
+        "autoEngage": true,
+        "replyToMentions": true,
+        "likeMentions": true,
+        "postInterval": 3600000,
+        "maxTweetsPerDay": 50
+      }
+    }
+  }
+}
+```
+
+## Features
+
+### Posting Tweets
+
+Your agent can post tweets:
+
+```typescript
+// Post a tweet
+{
+  "action": "tweet",
+  "text": "Hello from elizaOS! 🤖"
+}
+
+// Tweet with media
+{
+  "action": "tweet",
+  "text": "Check out this image!",
+  "mediaUrls": ["https://example.com/image.jpg"]
+}
+```
+
+<Tip>
+Tweets are limited to 280 characters. Plan your agent's posts accordingly.
+</Tip>
+
+### Reply to Tweets
+
+Respond to mentions or other tweets:
+
+```typescript
+{
+  "action": "reply",
+  "tweetId": "1234567890123456789",
+  "text": "Thanks for reaching out! Here's the information you requested."
+}
+```
+
+### Like and Retweet
+
+Engage with content:
+
+```typescript
+// Like a tweet
+{
+  "action": "like",
+  "tweetId": "1234567890123456789"
+}
+
+// Retweet
+{
+  "action": "retweet",
+  "tweetId": "1234567890123456789"
+}
+
+// Quote tweet
+{
+  "action": "quote",
+  "tweetId": "1234567890123456789",
+  "text": "This is interesting because..."
+}
+```
+
+### Follow and Unfollow
+
+Manage your following:
+
+```typescript
+// Follow a user
+{
+  "action": "follow",
+  "username": "targetuser"
+}
+
+// Unfollow a user
+{
+  "action": "unfollow",
+  "username": "targetuser"
+}
+```
+
+### Search Tweets
+
+Find tweets by keywords:
+
+```typescript
+{
+  "action": "search",
+  "query": "elizaOS",
+  "maxResults": 10
+}
+```
+
+### Monitor Mentions
+
+Your agent automatically monitors mentions when configured:
+
+```json
+{
+  "settings": {
+    "channels": {
+      "twitter": {
+        "replyToMentions": true,
+        "likeMentions": true
+      }
+    }
+  }
+}
+```
+
+### Get Tweet Information
+
+Retrieve details about tweets:
+
+```typescript
+{
+  "action": "getTweet",
+  "tweetId": "1234567890123456789"
+}
+```
+
+### Timeline
+
+Fetch your timeline or user timelines:
+
+```typescript
+// Home timeline
+{
+  "action": "timeline",
+  "limit": 20
+}
+
+// User timeline
+{
+  "action": "userTimeline",
+  "username": "someuser",
+  "limit": 20
+}
+```
+
+## Writing Style for Twitter
+
+Configure your agent's personality for Twitter:
+
+### Best Practices
+
+**Do:**
+- Keep tweets under 280 characters
+- Use relevant hashtags (1-2 max)
+- Ask engaging questions
+- Add value to conversations
+- Use emojis strategically
+- Include links when helpful
+- Reply thoughtfully to mentions
+- Thread longer thoughts
+
+**Don't:**
+- Spam hashtags (#too #many #hashtags)
+- Post identical content repeatedly
+- Engage in arguments
+- Share unverified information
+- Ignore mentions and DMs
+- Over-promote
+
+### Example Personality Configuration
+
+```json
+{
+  "style": {
+    "post": [
+      "Be concise and engaging",
+      "Use 1-2 relevant emojis per tweet",
+      "Ask questions to encourage discussion",
+      "Share insights with practical value",
+      "Keep it under 260 chars for retweet space"
+    ]
+  }
+}
+```
+
+## Plugin Auto-Loading
+
+The Twitter plugin auto-loads when credentials are configured:
+
+```typescript
+// From character.ts:240-247
+const plugins = [
+  ...(env.TWITTER_USERNAME?.trim() && 
+      env.TWITTER_PASSWORD?.trim()
+    ? ["@elizaos/plugin-twitter"]
+    : [])
+];
+```
+
+Both `TWITTER_USERNAME` and `TWITTER_PASSWORD` must be set.
+
+## Rate Limits and Best Practices
+
+### Twitter API Rate Limits
+
+- **Tweet posting**: 300 tweets per 3 hours
+- **Likes**: 1000 per 24 hours
+- **Follows**: 400 per 24 hours
+- **Retweets**: No specific limit, but monitored for spam
+- **Mentions timeline**: 75 requests per 15 minutes
+
+### Avoiding Suspension
+
+1. **Don't spam** - Space out tweets naturally
+2. **Vary content** - Don't post repetitive messages
+3. **Engage authentically** - Respond thoughtfully to mentions
+4. **Respect rate limits** - Implement backoff strategies
+5. **Follow Twitter Rules** - Review [Twitter Rules](https://help.twitter.com/en/rules-and-policies/twitter-rules)
+6. **Monitor account health** - Check for warnings in Twitter settings
+
+### Recommended Limits
+
+```json
+{
+  "settings": {
+    "channels": {
+      "twitter": {
+        "maxTweetsPerDay": 50,
+        "maxRepliesPerHour": 10,
+        "maxLikesPerHour": 30,
+        "minTimeBetweenTweets": 300000
+      }
+    }
+  }
+}
+```
+
+## Security Considerations
+
+### Two-Factor Authentication
+
+Enable 2FA on your Twitter account:
+
+1. Go to Settings > Security > Two-factor authentication
+2. Choose "Authentication app"
+3. Scan the QR code with an authenticator app
+4. Save the backup code shown
+5. Use the secret key as `TWITTER_2FA_SECRET`
+
+### Account Security
+
+- Use a strong, unique password
+- Enable login verification
+- Review authorized apps regularly
+- Monitor account activity
+- Use environment variables, never hardcode credentials
+
+### Bot Disclosure
+
+Be transparent that this is an AI agent:
+- Include "bot" or "AI" in your bio
+- Disclose in pinned tweet if appropriate
+- Follow platform policies on automation
+
+## Troubleshooting
+
+### Authentication fails
+
+1. Verify `TWITTER_USERNAME` and `TWITTER_PASSWORD` are correct
+2. Check if 2FA is enabled and `TWITTER_2FA_SECRET` is set
+3. Try logging in manually to ensure account isn't locked
+4. Check for password reset requirements
+
+### Tweets not posting
+
+1. Verify you have Elevated API access
+2. Check rate limits in Developer Portal
+3. Ensure tweet content doesn't violate Twitter rules
+4. Check for duplicate content (Twitter blocks exact duplicates)
+
+### Not receiving mentions
+
+1. Check API credentials are valid
+2. Verify account isn't shadowbanned
+3. Check mention notification settings
+4. Review rate limit status
+
+### Account suspended
+
+1. Review Twitter's suspension notice
+2. Appeal if you believe it's in error
+3. Review and adjust agent behavior
+4. Ensure compliance with automation rules
+
+## Use Cases
+
+### Community Engagement
+
+- Respond to questions about your project
+- Share updates and announcements
+- Amplify community content
+- Provide support and resources
+
+### Content Distribution
+
+- Share blog posts and articles
+- Post tips and insights
+- Thread complex topics
+- Curate relevant content
+
+### Brand Presence
+
+- Maintain consistent voice
+- Engage with followers
+- Participate in relevant conversations
+- Monitor brand mentions
+
+### Customer Service
+
+- Answer common questions
+- Direct users to resources
+- Collect feedback
+- Escalate complex issues
+
+## Related Resources
+
+- [Twitter Developer Documentation](https://developer.twitter.com/en/docs)
+- [Twitter API Reference](https://developer.twitter.com/en/docs/api-reference-index)
+- [Twitter Rules](https://help.twitter.com/en/rules-and-policies/twitter-rules)
+- [Automation Rules](https://help.twitter.com/en/rules-and-policies/twitter-automation)
+- [elizaOS Plugin Architecture](/plugins/architecture)
+- [Create a Plugin Guide](/guides/create-a-plugin)

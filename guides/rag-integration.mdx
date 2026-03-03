@@ -1,0 +1,499 @@
+---
+title: 'RAG Integration'
+description: 'Integrate Retrieval-Augmented Generation to give your elizaOS agents knowledge from documents and data sources'
+---
+
+RAG (Retrieval-Augmented Generation) allows agents to answer questions using information from your documents and data sources. ElizaOS includes built-in embedding and knowledge retrieval capabilities.
+
+## How RAG Works in ElizaOS
+
+1. **Embedding Generation** - Documents are converted to vector embeddings
+2. **Knowledge Storage** - Embeddings are stored in the database
+3. **Retrieval** - Relevant knowledge is retrieved based on query similarity
+4. **Generation** - The LLM uses retrieved context to generate responses
+
+## Setting Up RAG
+
+<Steps>
+  <Step title="Enable Embedding Service">
+    The `EmbeddingGenerationService` is included in the bootstrap plugin by default:
+    
+    ```typescript
+    import { createBootstrapPlugin } from '@elizaos/core';
+    
+    const runtime = new AgentRuntime({
+      character: myCharacter,
+      plugins: [
+        createBootstrapPlugin({
+          // EmbeddingGenerationService is included in basic capabilities
+          disableBasic: false
+        })
+      ]
+    });
+    ```
+  </Step>
+
+  <Step title="Configure Embedding Provider">
+    ElizaOS supports multiple embedding providers:
+    
+    ```bash .env
+    # OpenAI (recommended)
+    OPENAI_API_KEY=sk-...
+    
+    # Or use local Ollama
+    OLLAMA_API_ENDPOINT=http://localhost:11434
+    
+    # Note: Anthropic and OpenRouter require separate embedding providers
+    # as they don't provide native embedding endpoints
+    ```
+  </Step>
+
+  <Step title="Add Knowledge Documents">
+    Create knowledge entries in your character file:
+    
+    ```json character.json
+    {
+      "name": "MyAgent",
+      "knowledge": [
+        "ElizaOS is an open-source framework for building multi-agent AI applications.",
+        "The framework supports multiple AI model providers including OpenAI, Anthropic, and Gemini.",
+        "Plugins extend agent functionality with custom actions, providers, and evaluators."
+      ]
+    }
+    ```
+  </Step>
+</Steps>
+
+## Knowledge Provider
+
+The knowledge provider retrieves relevant information during conversations:
+
+```typescript Reference: packages/typescript/src/bootstrap/providers/knowledge.ts
+import type { Provider } from '@elizaos/core';
+
+const knowledgeProvider: Provider = {
+  name: 'KNOWLEDGE',
+  
+  get: async (runtime: IAgentRuntime, message, state) => {
+    // Search for relevant knowledge based on message
+    const results = await runtime.knowledgeManager.searchMemories({
+      roomId: message.roomId,
+      query: message.content.text,
+      limit: 5
+    });
+    
+    return {
+      name: 'KNOWLEDGE',
+      data: { results },
+      text: results.map(r => r.content.text).join('\n\n')
+    };
+  }
+};
+```
+
+The knowledge provider is included when you enable advanced capabilities:
+
+```typescript
+const runtime = new AgentRuntime({
+  character: myCharacter,
+  plugins: [
+    createBootstrapPlugin({
+      advancedCapabilities: true  // Enables knowledge provider
+    })
+  ]
+});
+```
+
+## Adding Documents Programmatically
+
+### From Text
+
+```typescript
+import { v4 as uuidv4 } from 'uuid';
+
+// Add knowledge to agent's memory
+await runtime.createMemory({
+  id: uuidv4() as UUID,
+  entityId: runtime.agentId,
+  agentId: runtime.agentId,
+  roomId: knowledgeRoomId,
+  content: {
+    text: 'Python is a high-level programming language known for readability and versatility.',
+    metadata: {
+      type: 'knowledge',
+      topic: 'programming',
+      source: 'manual-entry'
+    }
+  }
+}, 'knowledge');
+```
+
+### From Files
+
+```typescript
+import fs from 'fs';
+
+async function ingestDocument(filePath: string, runtime: AgentRuntime) {
+  const content = fs.readFileSync(filePath, 'utf-8');
+  
+  // Split into chunks (simple approach - use better chunking for production)
+  const chunks = content.split('\n\n').filter(c => c.trim());
+  
+  for (const chunk of chunks) {
+    await runtime.createMemory({
+      id: uuidv4() as UUID,
+      entityId: runtime.agentId,
+      agentId: runtime.agentId,
+      roomId: knowledgeRoomId,
+      content: {
+        text: chunk,
+        metadata: {
+          type: 'knowledge',
+          source: filePath,
+          ingestedAt: Date.now()
+        }
+      }
+    }, 'knowledge');
+  }
+}
+
+// Usage
+await ingestDocument('./docs/api-reference.md', runtime);
+```
+
+### From URLs
+
+```typescript
+async function ingestWebPage(url: string, runtime: AgentRuntime) {
+  // Fetch webpage content
+  const response = await fetch(url);
+  const html = await response.text();
+  
+  // Extract text (use a proper HTML parser in production)
+  const text = extractTextFromHtml(html);
+  
+  // Chunk and store
+  const chunks = chunkText(text, 500);
+  
+  for (const chunk of chunks) {
+    await runtime.createMemory({
+      id: uuidv4() as UUID,
+      entityId: runtime.agentId,
+      agentId: runtime.agentId,
+      roomId: knowledgeRoomId,
+      content: {
+        text: chunk,
+        metadata: {
+          type: 'knowledge',
+          source: url,
+          url
+        }
+      }
+    }, 'knowledge');
+  }
+}
+```
+
+## Searching Knowledge
+
+### Semantic Search
+
+```typescript
+// Search for relevant knowledge
+const results = await runtime.knowledgeManager.searchMemories({
+  roomId: knowledgeRoomId,
+  query: 'How do I create a custom plugin?',
+  limit: 5,
+  threshold: 0.7  // Minimum similarity score
+});
+
+for (const result of results) {
+  console.log(result.content.text);
+  console.log(`Similarity: ${result.similarity}`);
+}
+```
+
+### Filtered Search
+
+```typescript
+// Search with metadata filters
+const results = await runtime.knowledgeManager.searchMemories({
+  roomId: knowledgeRoomId,
+  query: 'programming concepts',
+  limit: 10,
+  metadata: {
+    topic: 'programming',
+    difficulty: 'beginner'
+  }
+});
+```
+
+## Text Chunking Strategies
+
+Proper chunking is crucial for RAG performance:
+
+### Fixed-Size Chunking
+
+```typescript
+function chunkText(text: string, chunkSize: number, overlap: number = 50): string[] {
+  const chunks: string[] = [];
+  let start = 0;
+  
+  while (start < text.length) {
+    const end = Math.min(start + chunkSize, text.length);
+    chunks.push(text.slice(start, end));
+    start = end - overlap;
+  }
+  
+  return chunks;
+}
+
+const chunks = chunkText(longDocument, 500, 50);
+```
+
+### Semantic Chunking
+
+```typescript
+function semanticChunk(text: string): string[] {
+  // Split by paragraphs
+  const paragraphs = text.split(/\n\n+/);
+  const chunks: string[] = [];
+  let currentChunk = '';
+  
+  for (const para of paragraphs) {
+    if (currentChunk.length + para.length > 1000) {
+      if (currentChunk) chunks.push(currentChunk);
+      currentChunk = para;
+    } else {
+      currentChunk += (currentChunk ? '\n\n' : '') + para;
+    }
+  }
+  
+  if (currentChunk) chunks.push(currentChunk);
+  return chunks;
+}
+```
+
+## Embedding Queue Management
+
+ElizaOS manages embedding generation asynchronously:
+
+```typescript
+// The embedding service automatically processes new memories
+const embeddingService = runtime.getService('EmbeddingGenerationService');
+
+// Check queue status
+const queueSize = await embeddingService.getQueueSize();
+console.log(`Pending embeddings: ${queueSize}`);
+
+// Wait for queue to complete
+await embeddingService.waitForQueue();
+```
+
+## Using Knowledge in Actions
+
+Create actions that leverage knowledge:
+
+```typescript
+const answerQuestionAction: Action = {
+  name: 'ANSWER_QUESTION',
+  description: 'Answer questions using knowledge base',
+  
+  validate: async (runtime, message) => {
+    const text = message.content.text?.toLowerCase() || '';
+    return text.includes('?') || text.startsWith('what') || text.startsWith('how');
+  },
+  
+  handler: async (runtime, message, state, options, callback) => {
+    // Search knowledge base
+    const knowledge = await runtime.knowledgeManager.searchMemories({
+      roomId: message.roomId,
+      query: message.content.text,
+      limit: 3
+    });
+    
+    // Compose context with knowledge
+    const context = knowledge.map((k, i) => 
+      `[Source ${i + 1}]: ${k.content.text}`
+    ).join('\n\n');
+    
+    // Generate answer using knowledge
+    const prompt = `
+      Answer this question using the provided sources:
+      
+      Question: ${message.content.text}
+      
+      Sources:
+      ${context}
+      
+      Answer:
+    `;
+    
+    const answer = await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt
+    });
+    
+    await callback({
+      text: answer,
+      actions: ['ANSWER_QUESTION']
+    });
+    
+    return { success: true };
+  }
+};
+```
+
+## Advanced RAG Patterns
+
+### Multi-Query Retrieval
+
+```typescript
+async function multiQueryRetrieval(
+  runtime: AgentRuntime,
+  query: string,
+  roomId: UUID
+): Promise<Memory[]> {
+  // Generate multiple search queries
+  const queries = await generateQueries(runtime, query);
+  
+  // Search with each query
+  const allResults: Memory[] = [];
+  for (const q of queries) {
+    const results = await runtime.knowledgeManager.searchMemories({
+      roomId,
+      query: q,
+      limit: 3
+    });
+    allResults.push(...results);
+  }
+  
+  // Deduplicate and rank
+  return deduplicateAndRank(allResults);
+}
+
+async function generateQueries(
+  runtime: AgentRuntime,
+  originalQuery: string
+): Promise<string[]> {
+  const prompt = `
+    Generate 3 different search queries that would help answer this question:
+    ${originalQuery}
+    
+    Return as JSON array of strings.
+  `;
+  
+  const response = await runtime.useModel(ModelType.OBJECT_SMALL, { prompt });
+  return JSON.parse(response);
+}
+```
+
+### Re-ranking Results
+
+```typescript
+async function reRankResults(
+  runtime: AgentRuntime,
+  query: string,
+  results: Memory[]
+): Promise<Memory[]> {
+  // Use LLM to re-rank results by relevance
+  const prompt = `
+    Rank these passages by relevance to the query: "${query}"
+    
+    ${results.map((r, i) => `${i}. ${r.content.text}`).join('\n\n')}
+    
+    Return the indices in order of relevance as a JSON array.
+  `;
+  
+  const ranking = await runtime.useModel(ModelType.OBJECT_SMALL, { prompt });
+  const indices = JSON.parse(ranking);
+  
+  return indices.map((i: number) => results[i]);
+}
+```
+
+### Citation Tracking
+
+```typescript
+async function answerWithCitations(
+  runtime: AgentRuntime,
+  query: string,
+  roomId: UUID
+): Promise<{ answer: string; citations: string[] }> {
+  const knowledge = await runtime.knowledgeManager.searchMemories({
+    roomId,
+    query,
+    limit: 3
+  });
+  
+  const context = knowledge.map((k, i) => 
+    `[${i + 1}] ${k.content.text} (Source: ${k.content.metadata?.source || 'unknown'})`
+  ).join('\n\n');
+  
+  const prompt = `
+    Answer this question using the numbered sources. Include citation numbers [1], [2], etc. in your answer.
+    
+    Question: ${query}
+    
+    ${context}
+  `;
+  
+  const answer = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+  
+  const citations = knowledge.map((k, i) => 
+    `[${i + 1}] ${k.content.metadata?.source || 'Unknown source'}`
+  );
+  
+  return { answer, citations };
+}
+```
+
+## Best Practices
+
+<Tip>
+- Chunk documents into 300-1000 character segments for optimal retrieval
+- Include metadata (source, date, topic) with each knowledge entry
+- Use semantic chunking to preserve context
+- Regularly update and prune outdated knowledge
+- Monitor embedding costs and optimize batch sizes
+- Cache frequently accessed knowledge
+</Tip>
+
+<Warning>
+- Don't store sensitive or private information without encryption
+- Don't skip chunking - large documents won't embed well
+- Don't ignore similarity thresholds - low-quality matches degrade responses
+- Don't forget to handle embedding provider rate limits
+</Warning>
+
+## Embedding Providers
+
+### OpenAI Embeddings
+
+```bash .env
+OPENAI_API_KEY=sk-...
+```
+
+Uses `text-embedding-3-small` or `text-embedding-3-large` models.
+
+### Local Ollama
+
+```bash .env
+OLLAMA_API_ENDPOINT=http://localhost:11434
+```
+
+Supports embedding models like `nomic-embed-text`.
+
+### Fallback to Local
+
+If no embedding provider is configured, elizaOS falls back to local embeddings (lower quality but works offline).
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Custom Actions" icon="bolt" href="/guides/custom-actions">
+    Build actions that leverage your knowledge base
+  </Card>
+  <Card title="Testing" icon="flask" href="/guides/testing">
+    Test RAG retrieval quality
+  </Card>
+</CardGroup>

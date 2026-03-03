@@ -1,0 +1,167 @@
+---
+title: "Agent Types"
+description: "Type definitions for agents and characters in elizaOS"
+---
+
+## Overview
+
+Agent types define the structure of agents and characters in elizaOS. While `Character` defines the blueprint, `Agent` represents an instantiated and potentially running version with runtime status and timestamps.
+
+## TemplateType
+
+A flexible type for defining string templates that can be static or dynamic.
+
+```typescript
+type TemplateType =
+  | string
+  | ((params: {
+      state:
+        | State
+        | Record<string, string | number | boolean | null | undefined>
+        | object;
+    }) => string);
+```
+
+**Properties:**
+- Can be a static string value
+- Can be a function that takes state parameters and returns a string
+
+## MessageExample
+
+Example message for demonstration purposes.
+
+```typescript
+interface MessageExample {
+  content: Content;
+}
+```
+
+**Properties:**
+- `content` - The content of the example message
+
+## MessageExampleGroup
+
+Groups multiple message examples together.
+
+```typescript
+interface MessageExampleGroup {
+  examples: MessageExample[];
+}
+```
+
+**Properties:**
+- `examples` - Array of message examples in the group
+
+## CharacterSettings
+
+Configuration settings for a character.
+
+```typescript
+type CharacterSettings = {
+  ENABLE_AUTONOMY?: boolean | string;
+  DISABLE_BASIC_CAPABILITIES?: boolean | string;
+  ADVANCED_CAPABILITIES?: boolean | string;
+  secrets?: Record<string, string | boolean | number>;
+  [key: string]: JsonValue | undefined;
+};
+```
+
+**Properties:**
+- `ENABLE_AUTONOMY?` - Enable autonomous behavior for the agent
+- `DISABLE_BASIC_CAPABILITIES?` - Disable basic agent capabilities
+- `ADVANCED_CAPABILITIES?` - Enable advanced features
+- `secrets?` - Secret configuration values (API keys, tokens, etc.)
+- Additional custom settings can be added as key-value pairs
+
+## Character
+
+Defines the blueprint of a character/agent.
+
+```typescript
+type Character = Partial<{
+  // Character properties from proto
+}> & {
+  settings?: CharacterSettings;
+  secrets?: Record<string, string | number | boolean>;
+  messageExamples?: MessageExampleGroup[];
+  knowledge?: KnowledgeSourceItem[];
+};
+```
+
+**Properties:**
+- `settings?` - Character configuration settings
+- `secrets?` - Secret values for authentication and API access
+- `messageExamples?` - Example conversations for the character
+- `knowledge?` - Knowledge sources available to the character
+
+## AgentStatus
+
+Enum representing the operational status of an agent.
+
+```typescript
+enum AgentStatus {
+  ACTIVE = "active",
+  INACTIVE = "inactive",
+}
+```
+
+**Values:**
+- `ACTIVE` - Agent is currently active and operational
+- `INACTIVE` - Agent is inactive or disabled
+
+## Agent
+
+Represents an operational agent, extending the `Character` definition with runtime status and timestamps.
+
+While `Character` defines the blueprint, `Agent` represents an instantiated and potentially running version. It includes:
+- `enabled`: A boolean indicating if the agent is currently active or disabled
+- `status`: The current operational status, typically `AgentStatus.ACTIVE` or `AgentStatus.INACTIVE`
+- `createdAt`, `updatedAt`: Timestamps for when the agent record was created and last updated in the database
+
+This interface is primarily used by the `IDatabaseAdapter` for agent management.
+
+```typescript
+interface Agent extends Character {
+  status?: AgentStatus | ProtoAgentStatus;
+  createdAt: number | bigint;
+  updatedAt: number | bigint;
+}
+```
+
+**Properties:**
+- All properties from `Character`
+- `status?` - Current operational status of the agent
+- `createdAt` - Timestamp when the agent was created (Unix timestamp)
+- `updatedAt` - Timestamp when the agent was last updated (Unix timestamp)
+
+## Usage Example
+
+```typescript
+import { Agent, AgentStatus, Character } from "@elizaos/core";
+
+// Define a character
+const character: Character = {
+  settings: {
+    ENABLE_AUTONOMY: true,
+    secrets: {
+      OPENAI_API_KEY: "sk-..."
+    }
+  },
+  messageExamples: [
+    {
+      examples: [
+        { content: { text: "Hello!" } }
+      ]
+    }
+  ],
+  knowledge: []
+};
+
+// Create an agent instance
+const agent: Agent = {
+  ...character,
+  status: AgentStatus.ACTIVE,
+  createdAt: Date.now(),
+  updatedAt: Date.now()
+};
+```

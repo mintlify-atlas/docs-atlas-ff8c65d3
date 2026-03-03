@@ -1,0 +1,509 @@
+---
+title: 'Testing'
+description: 'Test your elizaOS agents, actions, providers, and plugins with best practices and examples'
+---
+
+Testing ensures your agents behave correctly and helps prevent regressions. ElizaOS uses Vitest for testing with comprehensive test utilities.
+
+## Test Setup
+
+ElizaOS uses Vitest for all tests:
+
+```bash
+# Run all tests
+bun test
+
+# Run tests in watch mode
+bun test --watch
+
+# Run specific test file
+bun test path/to/test.test.ts
+
+# Run tests with coverage
+bun test --coverage
+```
+
+## Testing Actions
+
+### Basic Action Test
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { setupActionTest, cleanupTestRuntime } from './test-utils';
+import { myAction } from './my-action';
+
+describe('My Action', () => {
+  let runtime: IAgentRuntime;
+  let message: Memory;
+  let state: State;
+  let callback: HandlerCallback;
+  
+  beforeEach(async () => {
+    const setup = await setupActionTest();
+    runtime = setup.runtime;
+    message = setup.message;
+    state = setup.state;
+    callback = setup.callback;
+  });
+  
+  afterEach(async () => {
+    await cleanupTestRuntime(runtime);
+    vi.clearAllMocks();
+  });
+  
+  it('should validate correctly', async () => {
+    const isValid = await myAction.validate(runtime, message, state);
+    expect(isValid).toBe(true);
+  });
+  
+  it('should handle action successfully', async () => {
+    const result = await myAction.handler(
+      runtime,
+      message,
+      state,
+      {},
+      callback
+    );
+    
+    expect(result.success).toBe(true);
+    expect(callback).toHaveBeenCalled();
+  });
+});
+```
+
+### Testing with Mocks
+
+```typescript Reference: packages/typescript/src/bootstrap/__tests__/actions.test.ts
+import { vi } from 'vitest';
+
+it('should call external API', async () => {
+  // Mock the API call
+  const mockFetch = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ result: 'success' })
+  });
+  
+  global.fetch = mockFetch;
+  
+  await myAction.handler(runtime, message, state, {}, callback);
+  
+  expect(mockFetch).toHaveBeenCalledWith(
+    'https://api.example.com/endpoint',
+    expect.any(Object)
+  );
+});
+
+it('should use model correctly', async () => {
+  // Spy on useModel
+  vi.spyOn(runtime, 'useModel').mockResolvedValue(
+    '<response><text>Generated response</text></response>'
+  );
+  
+  await myAction.handler(runtime, message, state, {}, callback);
+  
+  expect(runtime.useModel).toHaveBeenCalledWith(
+    ModelType.TEXT_LARGE,
+    expect.objectContaining({
+      prompt: expect.stringContaining('expected prompt content')
+    })
+  );
+});
+```
+
+### Testing Validation
+
+```typescript
+it('should not validate without required permission', async () => {
+  vi.spyOn(runtime, 'getParticipantUserState').mockResolvedValue('MUTED');
+  
+  const isValid = await myAction.validate(runtime, message);
+  
+  expect(isValid).toBe(false);
+});
+
+it('should validate with proper context', async () => {
+  const message = createTestMemory({
+    content: { text: 'trigger phrase' }
+  });
+  
+  const isValid = await myAction.validate(runtime, message);
+  
+  expect(isValid).toBe(true);
+});
+```
+
+### Testing Error Handling
+
+```typescript
+it('should handle errors gracefully', async () => {
+  // Mock a failure
+  vi.spyOn(runtime, 'useModel').mockRejectedValue(
+    new Error('API timeout')
+  );
+  
+  const result = await myAction.handler(
+    runtime,
+    message,
+    state,
+    {},
+    callback
+  );
+  
+  expect(result.success).toBe(false);
+  expect(result.text).toContain('timeout');
+});
+```
+
+## Testing Providers
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { myProvider } from './my-provider';
+
+describe('My Provider', () => {
+  it('should return correct data', async () => {
+    const result = await myProvider.get(runtime, message, state);
+    
+    expect(result.name).toBe('MY_PROVIDER');
+    expect(result.data).toBeDefined();
+    expect(result.text).toContain('expected content');
+  });
+  
+  it('should handle missing data', async () => {
+    // Set up scenario with no data
+    vi.spyOn(runtime, 'getMemories').mockResolvedValue([]);
+    
+    const result = await myProvider.get(runtime, message, state);
+    
+    expect(result.text).toBe('');
+  });
+});
+```
+
+## Testing Services
+
+```typescript
+import { describe, it, expect, beforeEach } from 'vitest';
+import { MyService } from './my-service';
+
+describe('My Service', () => {
+  let service: MyService;
+  let runtime: IAgentRuntime;
+  
+  beforeEach(async () => {
+    const setup = await setupActionTest();
+    runtime = setup.runtime;
+    service = new MyService(runtime);
+    await service.initialize();
+  });
+  
+  it('should initialize correctly', () => {
+    expect(service).toBeDefined();
+  });
+  
+  it('should perform service operation', async () => {
+    const result = await service.performOperation('test-data');
+    
+    expect(result).toBeDefined();
+    expect(result.success).toBe(true);
+  });
+  
+  it('should be accessible from runtime', () => {
+    const retrievedService = runtime.getService('MyService');
+    
+    expect(retrievedService).toBe(service);
+  });
+});
+```
+
+## Testing Plugins
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { myPlugin } from './my-plugin';
+
+describe('My Plugin', () => {
+  it('should have correct structure', () => {
+    expect(myPlugin.name).toBe('my-plugin');
+    expect(myPlugin.description).toBeTruthy();
+    expect(Array.isArray(myPlugin.actions)).toBe(true);
+  });
+  
+  it('should register with runtime', async () => {
+    const runtime = new AgentRuntime({
+      character: testCharacter,
+      plugins: [myPlugin]
+    });
+    
+    // Check if actions are registered
+    const actions = runtime.getActions();
+    expect(actions.some(a => a.name === 'MY_ACTION')).toBe(true);
+  });
+  
+  it('should initialize services', async () => {
+    const runtime = new AgentRuntime({
+      character: testCharacter,
+      plugins: [myPlugin]
+    });
+    
+    const service = runtime.getService('MyService');
+    expect(service).toBeDefined();
+  });
+});
+```
+
+## Test Utilities
+
+ElizaOS provides test utilities to simplify testing:
+
+```typescript Reference: packages/typescript/src/bootstrap/__tests__/test-utils.ts
+import { setupActionTest, createTestMemory, stringToUuid } from './test-utils';
+
+// Create a test runtime with mock data
+const setup = await setupActionTest({
+  messageOverrides: {
+    content: { text: 'Custom message' }
+  }
+});
+
+// Create test memories
+const memory = createTestMemory({
+  content: {
+    text: 'Test message',
+    actions: ['TEST_ACTION']
+  },
+  roomId: testRoomId
+});
+
+// Generate deterministic UUIDs for testing
+const testId = stringToUuid('test-id');
+```
+
+## Integration Tests
+
+Test complete workflows:
+
+```typescript
+import { describe, it, expect } from 'vitest';
+
+describe('Complete Workflow', () => {
+  it('should process multi-step action chain', async () => {
+    const runtime = await createTestRuntime({
+      plugins: [myPlugin]
+    });
+    
+    // Step 1: User message
+    const userMessage = createTestMemory({
+      content: { text: 'Start workflow' }
+    });
+    
+    // Process message
+    const response1 = await runtime.processMessage(userMessage);
+    
+    expect(response1.content.actions).toContain('STEP_1');
+    
+    // Step 2: Follow-up
+    const followUp = createTestMemory({
+      content: { text: 'Continue' }
+    });
+    
+    const response2 = await runtime.processMessage(followUp);
+    
+    expect(response2.content.actions).toContain('STEP_2');
+  });
+});
+```
+
+## Testing RAG/Knowledge
+
+```typescript
+import { describe, it, expect, beforeEach } from 'vitest';
+
+describe('Knowledge Retrieval', () => {
+  let runtime: IAgentRuntime;
+  
+  beforeEach(async () => {
+    const setup = await setupActionTest();
+    runtime = setup.runtime;
+    
+    // Add test knowledge
+    await runtime.createMemory({
+      id: stringToUuid('knowledge-1'),
+      entityId: runtime.agentId,
+      agentId: runtime.agentId,
+      roomId: testRoomId,
+      content: {
+        text: 'ElizaOS is a multi-agent framework',
+        metadata: { type: 'knowledge' }
+      }
+    }, 'knowledge');
+  });
+  
+  it('should retrieve relevant knowledge', async () => {
+    const results = await runtime.knowledgeManager.searchMemories({
+      roomId: testRoomId,
+      query: 'What is ElizaOS?',
+      limit: 5
+    });
+    
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].content.text).toContain('ElizaOS');
+  });
+});
+```
+
+## Testing Multi-Agent Systems
+
+```typescript
+import { describe, it, expect } from 'vitest';
+
+describe('Multi-Agent Communication', () => {
+  it('should allow agents to communicate', async () => {
+    const agent1 = await createTestRuntime({ name: 'Agent1' });
+    const agent2 = await createTestRuntime({ name: 'Agent2' });
+    
+    // Create shared room
+    const roomId = stringToUuid('shared-room');
+    await agent1.ensureRoomExists({
+      id: roomId,
+      name: 'Shared Room',
+      source: 'test'
+    });
+    
+    // Agent 1 sends message
+    const message = createTestMemory({
+      entityId: agent1.agentId,
+      roomId: roomId,
+      content: { text: 'Hello Agent 2' }
+    });
+    
+    await agent1.createMemory(message, 'messages');
+    
+    // Agent 2 retrieves message
+    const messages = await agent2.getMemories({
+      roomId: roomId,
+      type: 'messages',
+      limit: 1
+    });
+    
+    expect(messages[0].content.text).toBe('Hello Agent 2');
+  });
+});
+```
+
+## Mocking Best Practices
+
+```typescript
+import { vi } from 'vitest';
+import { logger } from '@elizaos/core';
+
+// Mock logger to reduce noise
+beforeEach(() => {
+  vi.spyOn(logger, 'error').mockImplementation(() => {});
+  vi.spyOn(logger, 'warn').mockImplementation(() => {});
+  vi.spyOn(logger, 'debug').mockImplementation(() => {});
+});
+
+// Mock external services
+const mockExternalService = {
+  fetch: vi.fn().mockResolvedValue({ data: 'test' }),
+  update: vi.fn().mockResolvedValue({ success: true })
+};
+
+// Use in tests
+it('should use external service', async () => {
+  const result = await myAction.handler(
+    runtime,
+    message,
+    state,
+    { externalService: mockExternalService },
+    callback
+  );
+  
+  expect(mockExternalService.fetch).toHaveBeenCalled();
+});
+```
+
+## Coverage Goals
+
+Aim for these coverage targets:
+
+<Tip>
+- **Actions**: 80%+ coverage
+- **Providers**: 70%+ coverage
+- **Services**: 75%+ coverage
+- **Critical paths**: 95%+ coverage
+- **Error handling**: Test all error paths
+</Tip>
+
+## Continuous Integration
+
+Run tests in CI/CD:
+
+```yaml .github/workflows/test.yml
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: oven-sh/setup-bun@v1
+      - run: bun install
+      - run: bun test --coverage
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+```
+
+## Test Organization
+
+Organize tests alongside source files:
+
+```
+my-plugin/
+├── src/
+│   ├── actions/
+│   │   ├── my-action.ts
+│   │   └── __tests__/
+│   │       └── my-action.test.ts
+│   ├── providers/
+│   │   ├── my-provider.ts
+│   │   └── __tests__/
+│   │       └── my-provider.test.ts
+│   └── index.ts
+└── package.json
+```
+
+## Best Practices
+
+<Tip>
+- Write tests before fixing bugs (TDD)
+- Test edge cases and error conditions
+- Use descriptive test names
+- Keep tests focused and independent
+- Mock external dependencies
+- Use test utilities for common setup
+- Clean up resources in `afterEach`
+- Run tests before committing
+</Tip>
+
+<Warning>
+- Don't test implementation details
+- Don't skip cleanup in `afterEach`
+- Don't share state between tests
+- Don't make tests dependent on execution order
+- Don't forget to test error paths
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Deployment" icon="rocket" href="/guides/deployment">
+    Deploy your tested agents to production
+  </Card>
+  <Card title="Creating Plugins" icon="puzzle-piece" href="/guides/creating-plugins">
+    Build well-tested plugins
+  </Card>
+</CardGroup>

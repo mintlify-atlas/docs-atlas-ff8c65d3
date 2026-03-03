@@ -1,0 +1,416 @@
+---
+title: 'Creating Plugins'
+description: 'Build custom plugins to extend elizaOS agent functionality with actions, providers, evaluators, and services'
+---
+
+Plugins are the primary way to extend elizaOS agents with new capabilities. A plugin can add actions, providers, evaluators, services, and more.
+
+## Plugin Structure
+
+A plugin is an object that implements the `Plugin` interface:
+
+```typescript
+import type { Plugin } from '@elizaos/core';
+
+export const myPlugin: Plugin = {
+  name: 'my-plugin',
+  description: 'My custom plugin for elizaOS',
+  actions: [],
+  providers: [],
+  evaluators: [],
+  services: [],
+};
+```
+
+## Creating Your First Plugin
+
+<Steps>
+  <Step title="Set Up Plugin Directory">
+    Create a new directory for your plugin:
+    ```bash
+    mkdir -p plugins/my-plugin
+    cd plugins/my-plugin
+    ```
+  </Step>
+
+  <Step title="Create Plugin File">
+    Create `index.ts` with the plugin structure:
+    ```typescript plugins/my-plugin/index.ts
+    import type { Plugin, Action, IAgentRuntime } from '@elizaos/core';
+    
+    const greetAction: Action = {
+      name: 'GREET',
+      similes: ['HELLO', 'HI', 'WAVE'],
+      description: 'Greets the user warmly',
+      
+      validate: async (runtime: IAgentRuntime, message) => {
+        // Return true if action should be available
+        return true;
+      },
+      
+      handler: async (runtime, message, state, options, callback) => {
+        await callback({
+          text: `Hello! Nice to meet you!`,
+          actions: ['GREET']
+        });
+        
+        return {
+          success: true,
+          text: 'Greeted user successfully'
+        };
+      },
+      
+      examples: [
+        [
+          {
+            name: 'User',
+            content: { text: 'Hi there!' }
+          },
+          {
+            name: 'Agent',
+            content: {
+              text: 'Hello! Nice to meet you!',
+              actions: ['GREET']
+            }
+          }
+        ]
+      ]
+    };
+    
+    export const myPlugin: Plugin = {
+      name: 'my-plugin',
+      description: 'A simple greeting plugin',
+      actions: [greetAction]
+    };
+    ```
+  </Step>
+
+  <Step title="Register Plugin">
+    Add your plugin to the runtime:
+    ```typescript
+    import { AgentRuntime } from '@elizaos/core';
+    import { myPlugin } from './plugins/my-plugin';
+    
+    const runtime = new AgentRuntime({
+      character: myCharacter,
+      plugins: [myPlugin],
+      // ... other options
+    });
+    ```
+  </Step>
+</Steps>
+
+## Plugin Components
+
+### Actions
+
+Actions are behaviors the agent can perform. See the [Custom Actions guide](/guides/custom-actions) for details.
+
+```typescript
+const myAction: Action = {
+  name: 'MY_ACTION',
+  similes: ['SIMILAR_ACTION', 'ANOTHER_NAME'],
+  description: 'What this action does',
+  validate: async (runtime, message, state) => true,
+  handler: async (runtime, message, state, options, callback) => {
+    // Perform action
+    await callback({ text: 'Action response' });
+    return { success: true };
+  },
+  examples: [[/* conversation examples */]]
+};
+```
+
+### Providers
+
+Providers supply context to the agent before generating responses:
+
+```typescript
+import type { Provider } from '@elizaos/core';
+
+const weatherProvider: Provider = {
+  name: 'WEATHER',
+  
+  get: async (runtime: IAgentRuntime, message, state) => {
+    // Fetch weather data
+    const weather = await getWeatherData();
+    
+    return {
+      name: 'WEATHER',
+      data: {
+        weather,
+        temperature: weather.temp,
+        conditions: weather.conditions
+      },
+      text: `Current weather: ${weather.conditions}, ${weather.temp}°F`
+    };
+  }
+};
+
+export const weatherPlugin: Plugin = {
+  name: 'weather-plugin',
+  description: 'Provides weather information',
+  providers: [weatherProvider]
+};
+```
+
+### Evaluators
+
+Evaluators process messages after they're sent/received to extract information:
+
+```typescript
+import type { Evaluator } from '@elizaos/core';
+
+const sentimentEvaluator: Evaluator = {
+  name: 'SENTIMENT_ANALYSIS',
+  description: 'Analyzes message sentiment',
+  
+  validate: async (runtime, message) => {
+    // Only evaluate user messages
+    return message.entityId !== runtime.agentId;
+  },
+  
+  handler: async (runtime, message) => {
+    const sentiment = await analyzeSentiment(message.content.text);
+    
+    // Store sentiment in database
+    await runtime.createMemory({
+      type: 'sentiment',
+      content: {
+        sentiment: sentiment.label,
+        score: sentiment.score
+      },
+      roomId: message.roomId,
+      entityId: message.entityId,
+      agentId: runtime.agentId
+    });
+  },
+  
+  examples: []
+};
+```
+
+### Services
+
+Services provide long-running functionality and can be accessed from actions:
+
+```typescript
+import type { Service, IAgentRuntime, ServiceClass } from '@elizaos/core';
+
+class NotificationService implements Service {
+  private runtime: IAgentRuntime;
+  private subscribers: Set<string> = new Set();
+  
+  constructor(runtime: IAgentRuntime) {
+    this.runtime = runtime;
+  }
+  
+  async initialize(): Promise<void> {
+    // Set up service
+    console.log('NotificationService initialized');
+  }
+  
+  subscribe(userId: string): void {
+    this.subscribers.add(userId);
+  }
+  
+  async notify(message: string): Promise<void> {
+    for (const userId of this.subscribers) {
+      // Send notification
+      await this.sendNotification(userId, message);
+    }
+  }
+  
+  private async sendNotification(userId: string, message: string): Promise<void> {
+    // Implementation
+  }
+}
+
+export const notificationPlugin: Plugin = {
+  name: 'notification-plugin',
+  description: 'Manages user notifications',
+  services: [NotificationService as ServiceClass]
+};
+```
+
+Access services in actions:
+
+```typescript
+const subscribeAction: Action = {
+  name: 'SUBSCRIBE',
+  handler: async (runtime, message, state, options, callback) => {
+    const notificationService = runtime.getService('NotificationService') as NotificationService;
+    notificationService.subscribe(message.entityId);
+    
+    await callback({
+      text: 'You are now subscribed to notifications!'
+    });
+    
+    return { success: true };
+  }
+};
+```
+
+## Plugin Discovery
+
+ElizaOS automatically discovers plugins in these locations (in order):
+
+1. **Config paths** - Paths specified in configuration
+2. **Workspace plugins** - `./plugins/`, `./extensions/`, `./.elizaos/plugins/`
+3. **Global plugins** - `~/.elizaos/plugins/`
+4. **Bundled plugins** - Plugins bundled with elizaOS
+5. **npm packages** - Packages with `elizaos` metadata in `package.json`
+
+### Package.json Configuration
+
+For npm packages, add elizaOS metadata:
+
+```json package.json
+{
+  "name": "@myorg/elizaos-plugin-example",
+  "version": "1.0.0",
+  "elizaos": {
+    "extensions": ["./dist/index.js"]
+  },
+  "agentConfig": {
+    "MY_PLUGIN_API_KEY": {
+      "required": true,
+      "description": "API key for my plugin service"
+    }
+  }
+}
+```
+
+## Bootstrap Plugin Example
+
+The bootstrap plugin shows advanced plugin structure with capability levels:
+
+```typescript Reference: packages/typescript/src/bootstrap/index.ts
+import type { Plugin, ServiceClass } from '@elizaos/core';
+import { withCanonicalActionDocs } from '@elizaos/core';
+
+export interface CapabilityConfig {
+  disableBasic?: boolean;
+  advancedCapabilities?: boolean;
+  skipCharacterProvider?: boolean;
+  enableAutonomy?: boolean;
+}
+
+const basic = {
+  providers: [
+    actionsProvider,
+    characterProvider,
+    recentMessagesProvider,
+    timeProvider
+  ],
+  actions: [
+    withCanonicalActionDocs(replyAction),
+    withCanonicalActionDocs(ignoreAction)
+  ],
+  services: [
+    TaskService,
+    EmbeddingGenerationService
+  ] as ServiceClass[]
+};
+
+const advanced = {
+  providers: [knowledgeProvider, settingsProvider],
+  actions: [
+    withCanonicalActionDocs(generateImageAction),
+    withCanonicalActionDocs(resetSessionAction)
+  ],
+  services: [] as ServiceClass[]
+};
+
+export function createBootstrapPlugin(config: CapabilityConfig = {}): Plugin {
+  return {
+    name: 'bootstrap',
+    description: 'Agent bootstrap with configurable capabilities',
+    actions: [
+      ...(config.disableBasic ? [] : basic.actions),
+      ...(config.advancedCapabilities ? advanced.actions : [])
+    ],
+    providers: [
+      ...(config.disableBasic ? [] : basic.providers),
+      ...(config.advancedCapabilities ? advanced.providers : [])
+    ],
+    services: [
+      ...(config.disableBasic ? [] : basic.services),
+      ...(config.advancedCapabilities ? advanced.services : [])
+    ]
+  };
+}
+```
+
+## Plugin Best Practices
+
+<Tip>
+**Do:**
+- Give plugins descriptive names (e.g., `weather-plugin`, not `plugin1`)
+- Document required environment variables in `agentConfig`
+- Provide example conversations for actions
+- Use TypeScript for type safety
+- Test plugins in isolation before integrating
+- Version your plugins using semantic versioning
+</Tip>
+
+<Warning>
+**Don't:**
+- Hardcode API keys or secrets (use environment variables)
+- Block the main thread with long-running operations
+- Modify global state without proper synchronization
+- Ignore error handling in handlers
+- Skip validation in action validators
+</Warning>
+
+## Publishing Plugins
+
+<Steps>
+  <Step title="Prepare Package">
+    Create a proper package.json:
+    ```json
+    {
+      "name": "@myorg/elizaos-plugin-example",
+      "version": "1.0.0",
+      "main": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "elizaos": {
+        "extensions": ["./dist/index.js"]
+      },
+      "peerDependencies": {
+        "@elizaos/core": "^1.0.0"
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Build Plugin">
+    ```bash
+    npm run build
+    ```
+  </Step>
+
+  <Step title="Publish to npm">
+    ```bash
+    npm publish --access public
+    ```
+  </Step>
+</Steps>
+
+## Example Plugins
+
+Study these built-in plugins for inspiration:
+
+- **Bootstrap Plugin** (`packages/typescript/src/bootstrap/`) - Core actions and providers
+- Plugin packages in the elizaOS monorepo
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Custom Actions" icon="bolt" href="/guides/custom-actions">
+    Learn how to build sophisticated action handlers
+  </Card>
+  <Card title="Testing" icon="flask" href="/guides/testing">
+    Test your plugins thoroughly
+  </Card>
+</CardGroup>

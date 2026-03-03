@@ -1,0 +1,469 @@
+---
+title: Farcaster Integration
+description: Connect your elizaOS agent to Farcaster for decentralized social networking
+---
+
+## Overview
+
+Farcaster is a decentralized social network built on Ethereum, offering a censorship-resistant alternative to traditional social platforms. The elizaOS Farcaster integration enables your agent to participate in this ecosystem, casting messages (posts), replying to conversations, and engaging with the Farcaster community.
+
+## About Farcaster
+
+Farcaster is different from traditional social networks:
+
+- **Decentralized** - Your identity and content are stored on the blockchain and IPFS
+- **Permissionless** - Anyone can build clients and apps on top of the protocol
+- **Portable** - Your social graph and content move with you between apps
+- **Censorship-resistant** - No central authority can remove your content
+
+Popular Farcaster clients include [Warpcast](https://warpcast.com/), [Supercast](https://supercast.xyz/), and others.
+
+## Prerequisites
+
+Before setting up Farcaster integration, you need:
+
+- A Farcaster account (FID - Farcaster ID)
+- An Ethereum wallet with a small amount of ETH for registration
+- Access to a Farcaster hub or API service
+- Your Farcaster custody address and recovery phrase
+
+## Setup
+
+<Steps>
+
+### Create a Farcaster Account
+
+1. Download [Warpcast](https://warpcast.com/) (the primary Farcaster client)
+2. Follow the signup process:
+   - Pay the registration fee (approximately $5 in ETH)
+   - Choose your username
+   - Set up your profile
+3. Note your FID (Farcaster ID) - you'll need this later
+
+### Generate App Credentials
+
+To integrate your agent, you'll need signer credentials:
+
+1. Access your Farcaster custody address and private key
+2. Generate an app-specific signer key pair
+3. Authorize the signer through a Farcaster client
+
+<Warning>
+Never share your main custody private key. Always use app-specific signers for integrations.
+</Warning>
+
+### Choose a Hub Connection
+
+Your agent needs to connect to a Farcaster hub. Options:
+
+**1. Public Hubs:**
+- Neynar API (easiest, requires API key)
+- Pinata Farcaster API
+- Public community hubs
+
+**2. Self-Hosted:**
+- Run your own [Hubble instance](https://github.com/farcasterxyz/hub-monorepo)
+- Full control but requires infrastructure
+
+**Recommended for getting started:** Use [Neynar](https://neynar.com/) for its managed API.
+
+### Get API Credentials (Neynar Example)
+
+1. Go to [Neynar](https://neynar.com/)
+2. Sign up for a developer account
+3. Create a new app
+4. Copy your API key
+5. Generate a signer for your Farcaster FID
+
+### Set Environment Variables
+
+Add the following to your `.env` file:
+
+```bash
+# Farcaster Identity
+FARCASTER_FID=your_farcaster_id
+FARCASTER_MNEMONIC=your_recovery_phrase_here
+
+# Hub/API Connection (example: Neynar)
+FARCASTER_HUB_URL=https://hub-api.neynar.com
+NEYNAR_API_KEY=your_neynar_api_key
+
+# Optional: Custom hub
+# FARCASTER_HUB_URL=http://localhost:2281
+```
+
+### Add the Farcaster Plugin
+
+In your character configuration file, add the Farcaster plugin:
+
+```json
+{
+  "name": "YourAgent",
+  "plugins": [
+    "@elizaos/plugin-farcaster"
+  ],
+  "settings": {
+    "channels": {
+      "farcaster": {
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+</Steps>
+
+## Configuration
+
+### Environment Variables
+
+The Farcaster integration supports the following environment variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `FARCASTER_FID` | Yes | Your Farcaster ID (numeric) |
+| `FARCASTER_MNEMONIC` | Yes | Your recovery phrase or signer key |
+| `FARCASTER_HUB_URL` | Yes | Hub API endpoint URL |
+| `NEYNAR_API_KEY` | Conditional | Required if using Neynar |
+
+### Character Settings
+
+Configure Farcaster-specific behavior:
+
+```json
+{
+  "settings": {
+    "channels": {
+      "farcaster": {
+        "enabled": true,
+        "autoReply": true,
+        "replyToMentions": true,
+        "engageWithFollowers": true,
+        "castInterval": 3600000,
+        "maxCastsPerDay": 30
+      }
+    }
+  }
+}
+```
+
+## Features
+
+### Casting (Posting)
+
+Create casts (Farcaster's version of posts/tweets):
+
+```typescript
+// Simple cast
+{
+  "action": "cast",
+  "text": "Hello Farcaster! Building with elizaOS 🤖"
+}
+
+// Cast with embeds
+{
+  "action": "cast",
+  "text": "Check out this project",
+  "embeds": [
+    { "url": "https://github.com/elizaos/eliza" }
+  ]
+}
+
+// Cast with image
+{
+  "action": "cast",
+  "text": "Visual content",
+  "embeds": [
+    { "url": "https://example.com/image.png" }
+  ]
+}
+```
+
+<Note>
+Casts can be up to 320 characters (longer than Twitter's 280). They can include links, images, and even other casts as embeds.
+</Note>
+
+### Replies
+
+Reply to casts:
+
+```typescript
+{
+  "action": "reply",
+  "parentHash": "0x1234...",
+  "text": "Great point! Here's my take..."
+}
+```
+
+### Reactions
+
+React to casts with likes:
+
+```typescript
+// Like a cast
+{
+  "action": "like",
+  "castHash": "0x1234..."
+}
+
+// Remove like
+{
+  "action": "unlike",
+  "castHash": "0x1234..."
+}
+```
+
+### Recasts
+
+Recast (similar to retweet):
+
+```typescript
+{
+  "action": "recast",
+  "castHash": "0x1234..."
+}
+```
+
+### Follow/Unfollow
+
+Manage follows:
+
+```typescript
+// Follow a user by FID
+{
+  "action": "follow",
+  "fid": 12345
+}
+
+// Unfollow
+{
+  "action": "unfollow",
+  "fid": 12345
+}
+```
+
+### Get User Information
+
+Retrieve user profiles:
+
+```typescript
+// Get user by FID
+{
+  "action": "getUserByFid",
+  "fid": 12345
+}
+
+// Get user by username
+{
+  "action": "getUserByUsername",
+  "username": "elizaos"
+}
+```
+
+### Get Casts
+
+Fetch casts from the network:
+
+```typescript
+// Get user's casts
+{
+  "action": "getUserCasts",
+  "fid": 12345,
+  "limit": 25
+}
+
+// Get cast thread
+{
+  "action": "getCastThread",
+  "castHash": "0x1234..."
+}
+
+// Get home feed
+{
+  "action": "getFeed",
+  "fid": 12345,
+  "feedType": "following",
+  "limit": 50
+}
+```
+
+### Monitor Mentions
+
+Your agent can monitor mentions and notifications:
+
+```typescript
+{
+  "action": "getNotifications",
+  "fid": 12345,
+  "limit": 20
+}
+```
+
+### Channels
+
+Participate in Farcaster channels:
+
+```typescript
+// Cast to a channel
+{
+  "action": "cast",
+  "text": "Contributing to the discussion",
+  "channel": "elizaos"
+}
+
+// Get channel casts
+{
+  "action": "getChannelCasts",
+  "channel": "elizaos",
+  "limit": 25
+}
+```
+
+## Farcaster Protocol Details
+
+### Hubs
+
+Farcaster hubs are nodes that:
+- Store and validate casts and user data
+- Propagate messages across the network
+- Provide APIs for reading and writing data
+
+Your agent communicates with hubs via HTTP or gRPC APIs.
+
+### Signers
+
+Signers are key pairs authorized to act on behalf of your FID:
+- **Custody address**: Your main Farcaster identity (keep secure!)
+- **App signers**: Delegated keys for specific applications
+- Each signer must be authorized by your custody address
+
+### Content Storage
+
+- **On-chain**: FID registration, username, key registrations
+- **Off-chain**: Casts, reactions, follows stored in hubs
+- **Media**: Images/files typically stored on IPFS or CDNs
+
+## Best Practices
+
+### Engagement
+
+1. **Be authentic** - Farcaster values genuine interaction
+2. **Add value** - Share insights, help others, contribute meaningfully
+3. **Use channels** - Participate in topic-specific channels
+4. **Build relationships** - Engage with the community consistently
+5. **Respect the culture** - Farcaster has a unique, Web3-native community
+
+### Content Strategy
+
+1. **Share builders' updates** - The community loves seeing what people are building
+2. **Engage with threads** - Thoughtful replies get noticed
+3. **Use appropriate channels** - Post in relevant topic channels
+4. **Quality over quantity** - Better to post less frequently with value
+5. **Cross-promote thoughtfully** - Share content but don't spam
+
+### Technical
+
+1. **Monitor hub sync status** - Ensure your hub is in sync
+2. **Handle errors gracefully** - Network issues can occur
+3. **Respect rate limits** - Be a good network citizen
+4. **Keep signers secure** - Protect private keys
+5. **Test before deploying** - Use test accounts first
+
+## Rate Limits
+
+Farcaster has protocol-level and API-level limits:
+
+### Protocol Limits
+
+- **Casts per day**: Varies by hub and anti-spam measures
+- **Reactions**: Generally unrestricted but monitored for abuse
+- **Follows**: Reasonable limits to prevent spam
+
+### API Limits (Neynar Example)
+
+- **Free tier**: 100 requests per minute
+- **Paid tiers**: Higher limits available
+- Check your specific hub/API provider's documentation
+
+## Troubleshooting
+
+### Cannot connect to hub
+
+1. Verify `FARCASTER_HUB_URL` is correct and accessible
+2. Check network connectivity
+3. Ensure API key is valid (if using managed service)
+4. Try alternative hub endpoints
+
+### Casts not appearing
+
+1. Check hub sync status
+2. Verify signer is properly authorized
+3. Ensure cast content meets protocol requirements
+4. Check for error messages in logs
+5. Try viewing on different Farcaster clients
+
+### Authentication errors
+
+1. Verify `FARCASTER_FID` is correct
+2. Check `FARCASTER_MNEMONIC` is valid
+3. Ensure signer is authorized for your FID
+4. Re-authorize signer if necessary
+
+### "User not found" errors
+
+1. Verify FID or username is correct
+2. Check if user exists on the network
+3. Ensure hub is synced
+4. Try different hub endpoints
+
+## Use Cases
+
+### Developer Community
+
+- Share project updates and releases
+- Answer technical questions
+- Gather feedback from users
+- Network with other builders
+
+### Content Distribution
+
+- Cross-post from blogs or documentation
+- Share announcements
+- Thread complex topics
+- Build thought leadership
+
+### Community Management
+
+- Respond to mentions and questions
+- Moderate channels (if admin)
+- Welcome new community members
+- Share community highlights
+
+### Research and Monitoring
+
+- Track project mentions
+- Monitor sentiment
+- Identify trends
+- Gather user feedback
+
+## Farcaster vs Traditional Social
+
+| Feature | Farcaster | Traditional Social |
+|---------|-----------|--------------------|
+| Ownership | You own your identity | Platform owns data |
+| Portability | Take your data anywhere | Locked to platform |
+| Censorship | Resistant (protocol level) | Platform can remove content |
+| Client choice | Multiple apps, same network | Single app per network |
+| API access | Open protocol | Limited, gated APIs |
+| Identity | Wallet-based | Email/phone based |
+
+## Related Resources
+
+- [Farcaster Documentation](https://docs.farcaster.xyz/)
+- [Warpcast](https://warpcast.com/)
+- [Neynar API Docs](https://docs.neynar.com/)
+- [Hub Monorepo](https://github.com/farcasterxyz/hub-monorepo)
+- [Farcaster Protocol Specification](https://github.com/farcasterxyz/protocol)
+- [elizaOS Plugin Architecture](/plugins/architecture)
+- [Create a Plugin Guide](/guides/create-a-plugin)

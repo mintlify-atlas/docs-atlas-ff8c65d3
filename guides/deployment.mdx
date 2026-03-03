@@ -1,0 +1,626 @@
+---
+title: 'Deployment'
+description: 'Deploy your elizaOS agents to production with best practices for scaling, monitoring, and reliability'
+---
+
+This guide covers deploying elizaOS agents to production environments with proper configuration, security, and monitoring.
+
+## Production Checklist
+
+Before deploying to production:
+
+<Steps>
+  <Step title="Environment Configuration">
+    Set up production environment variables:
+    ```bash .env.production
+    # Set production mode
+    NODE_ENV=production
+    
+    # Disable development UI
+    ELIZA_UI_ENABLE=false
+    
+    # Enable API authentication
+    ELIZA_SERVER_AUTH_TOKEN=<strong-random-token>
+    
+    # Production database
+    POSTGRES_URL=postgresql://user:pass@prod-db:5432/eliza
+    
+    # Production AI provider
+    OPENAI_API_KEY=<production-key>
+    ```
+  </Step>
+
+  <Step title="Database Setup">
+    Use PostgreSQL for production (not PGLite):
+    ```bash
+    # Create production database
+    createdb eliza_production
+    
+    # Run migrations
+    bun run migrate
+    ```
+  </Step>
+
+  <Step title="Build Application">
+    ```bash
+    # Install production dependencies
+    bun install --production
+    
+    # Build TypeScript
+    bun run build
+    ```
+  </Step>
+
+  <Step title="Security Review">
+    - Enable ELIZA_SERVER_AUTH_TOKEN
+    - Use HTTPS for all connections
+    - Restrict CORS origins
+    - Review plugin permissions
+    - Audit environment variables for secrets
+  </Step>
+</Steps>
+
+## Deployment Options
+
+### Docker Deployment
+
+Create a production Dockerfile:
+
+```dockerfile Dockerfile
+FROM oven/bun:1 as builder
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json bun.lockb ./
+COPY packages ./packages
+
+# Install dependencies
+RUN bun install --frozen-lockfile --production
+
+# Build application
+RUN bun run build
+
+# Production image
+FROM oven/bun:1-slim
+
+WORKDIR /app
+
+# Copy built files
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+
+# Create data directory
+RUN mkdir -p /app/.eliza
+
+# Run as non-root user
+USER bun
+
+EXPOSE 3000
+
+CMD ["bun", "run", "start"]
+```
+
+Docker Compose setup:
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  eliza:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - POSTGRES_URL=postgresql://eliza:password@postgres:5432/eliza
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ELIZA_SERVER_AUTH_TOKEN=${ELIZA_SERVER_AUTH_TOKEN}
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/.eliza
+  
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=eliza
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=eliza
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+```
+
+Deploy:
+
+```bash
+# Build and start
+docker-compose up -d
+
+# View logs
+docker-compose logs -f eliza
+
+# Stop
+docker-compose down
+```
+
+### Node.js/Bun Process Manager
+
+Use PM2 for process management:
+
+```bash
+# Install PM2
+npm install -g pm2
+
+# Start application
+pm2 start dist/index.js --name eliza
+
+# View logs
+pm2 logs eliza
+
+# Monitor
+pm2 monit
+
+# Auto-restart on reboot
+pm2 startup
+pm2 save
+```
+
+PM2 ecosystem file:
+
+```javascript ecosystem.config.js
+module.exports = {
+  apps: [{
+    name: 'eliza',
+    script: './dist/index.js',
+    instances: 2,
+    exec_mode: 'cluster',
+    env: {
+      NODE_ENV: 'production',
+      SERVER_PORT: 3000
+    },
+    error_file: './logs/err.log',
+    out_file: './logs/out.log',
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    max_memory_restart: '1G'
+  }]
+};
+```
+
+### Cloud Platforms
+
+#### Railway
+
+1. Connect your GitHub repository
+2. Add environment variables
+3. Deploy automatically on push
+
+```bash
+# Install Railway CLI
+npm install -g @railway/cli
+
+# Login
+railway login
+
+# Link project
+railway link
+
+# Deploy
+railway up
+```
+
+#### Fly.io
+
+Create `fly.toml`:
+
+```toml fly.toml
+app = "my-eliza-agent"
+primary_region = "iad"
+
+[build]
+  builder = "paketobuildpacks/builder:base"
+
+[env]
+  NODE_ENV = "production"
+  SERVER_PORT = "8080"
+
+[[services]]
+  http_checks = []
+  internal_port = 8080
+  protocol = "tcp"
+  script_checks = []
+
+  [[services.ports]]
+    force_https = true
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+```
+
+Deploy:
+
+```bash
+# Install flyctl
+curl -L https://fly.io/install.sh | sh
+
+# Login
+flyctl auth login
+
+# Launch app
+flyctl launch
+
+# Deploy
+flyctl deploy
+
+# Set secrets
+flyctl secrets set OPENAI_API_KEY=sk-...
+```
+
+#### Heroku
+
+Create `Procfile`:
+
+```
+web: bun run start
+```
+
+Deploy:
+
+```bash
+# Install Heroku CLI
+curl https://cli-assets.heroku.com/install.sh | sh
+
+# Login
+heroku login
+
+# Create app
+heroku create my-eliza-agent
+
+# Add Postgres
+heroku addons:create heroku-postgresql:mini
+
+# Set config
+heroku config:set OPENAI_API_KEY=sk-...
+heroku config:set NODE_ENV=production
+
+# Deploy
+git push heroku main
+```
+
+## Reverse Proxy Setup
+
+### Nginx
+
+```nginx /etc/nginx/sites-available/eliza
+upstream eliza {
+    server localhost:3000;
+}
+
+server {
+    listen 80;
+    server_name example.com;
+    
+    # Redirect to HTTPS
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name example.com;
+    
+    ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+    
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    
+    location / {
+        proxy_pass http://eliza;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+### Caddy
+
+```caddy Caddyfile
+example.com {
+    reverse_proxy localhost:3000
+    
+    header {
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+    }
+}
+```
+
+## Monitoring and Logging
+
+### Structured Logging
+
+```typescript
+import { logger } from '@elizaos/core';
+
+// Configure production logging
+logger.level = process.env.LOG_LEVEL || 'info';
+
+// Use structured logging
+logger.info({
+  src: 'deployment',
+  event: 'agent_started',
+  agentId: runtime.agentId,
+  timestamp: Date.now()
+}, 'Agent started successfully');
+```
+
+### Health Checks
+
+Implement health check endpoint:
+
+```typescript
+import express from 'express';
+
+const app = express();
+
+app.get('/health', async (req, res) => {
+  try {
+    // Check database connection
+    await runtime.databaseAdapter.getAccountById(runtime.agentId);
+    
+    res.json({
+      status: 'healthy',
+      timestamp: Date.now(),
+      uptime: process.uptime()
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'unhealthy',
+      error: error.message
+    });
+  }
+});
+```
+
+### Metrics Collection
+
+```typescript
+// Track metrics
+let messageCount = 0;
+let errorCount = 0;
+
+runtime.on('message:processed', () => {
+  messageCount++;
+});
+
+runtime.on('error', () => {
+  errorCount++;
+});
+
+// Expose metrics endpoint
+app.get('/metrics', (req, res) => {
+  res.json({
+    messages_processed: messageCount,
+    errors: errorCount,
+    memory_usage: process.memoryUsage(),
+    uptime: process.uptime()
+  });
+});
+```
+
+## Scaling Strategies
+
+### Horizontal Scaling
+
+Run multiple instances behind a load balancer:
+
+```yaml docker-compose.scale.yml
+services:
+  eliza:
+    build: .
+    environment:
+      - NODE_ENV=production
+      - POSTGRES_URL=${POSTGRES_URL}
+    depends_on:
+      - postgres
+    deploy:
+      replicas: 3
+  
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - eliza
+```
+
+### Database Connection Pooling
+
+```typescript
+import { PostgresDatabaseAdapter } from '@elizaos/adapter-postgres';
+
+const db = new PostgresDatabaseAdapter({
+  connectionString: process.env.POSTGRES_URL,
+  max: 20,  // Maximum pool size
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000
+});
+```
+
+### Caching
+
+```typescript
+import Redis from 'ioredis';
+
+const redis = new Redis(process.env.REDIS_URL);
+
+// Cache frequently accessed data
+async function getCachedKnowledge(query: string) {
+  const cached = await redis.get(`knowledge:${query}`);
+  if (cached) return JSON.parse(cached);
+  
+  const results = await runtime.knowledgeManager.searchMemories({
+    query,
+    limit: 5
+  });
+  
+  await redis.setex(`knowledge:${query}`, 3600, JSON.stringify(results));
+  return results;
+}
+```
+
+## Security Best Practices
+
+<Warning>
+**Production Security Checklist:**
+- Enable `ELIZA_SERVER_AUTH_TOKEN` for API authentication
+- Use HTTPS/TLS for all connections
+- Set `NODE_ENV=production`
+- Restrict CORS origins
+- Use strong database passwords
+- Rotate API keys regularly
+- Keep dependencies updated
+- Enable rate limiting
+- Implement request validation
+- Monitor for suspicious activity
+</Warning>
+
+### Rate Limiting
+
+```typescript
+import rateLimit from 'express-rate-limit';
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP'
+});
+
+app.use('/api/', limiter);
+```
+
+### Input Validation
+
+```typescript
+import { z } from 'zod';
+
+const messageSchema = z.object({
+  text: z.string().min(1).max(2000),
+  roomId: z.string().uuid(),
+  metadata: z.record(z.unknown()).optional()
+});
+
+app.post('/api/message', async (req, res) => {
+  try {
+    const validated = messageSchema.parse(req.body);
+    // Process message...
+  } catch (error) {
+    res.status(400).json({ error: 'Invalid input' });
+  }
+});
+```
+
+## Backup and Recovery
+
+### Database Backups
+
+```bash
+# Automated backup script
+#!/bin/bash
+
+BACKUP_DIR="/backups/eliza"
+DATE=$(date +%Y%m%d_%H%M%S)
+
+# Create backup
+pg_dump $POSTGRES_URL > "$BACKUP_DIR/eliza_$DATE.sql"
+
+# Compress
+gzip "$BACKUP_DIR/eliza_$DATE.sql"
+
+# Delete backups older than 7 days
+find $BACKUP_DIR -name "*.sql.gz" -mtime +7 -delete
+```
+
+Schedule with cron:
+
+```bash
+# Run daily at 2 AM
+0 2 * * * /path/to/backup.sh
+```
+
+## Environment-Specific Configuration
+
+```typescript
+const config = {
+  development: {
+    logLevel: 'debug',
+    enableUI: true,
+    database: 'memory://'
+  },
+  production: {
+    logLevel: 'info',
+    enableUI: false,
+    database: process.env.POSTGRES_URL
+  }
+};
+
+const env = process.env.NODE_ENV || 'development';
+const currentConfig = config[env];
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Out of Memory:**
+```bash
+# Increase Node.js memory limit
+NODE_OPTIONS="--max-old-space-size=4096" bun run start
+```
+
+**Database Connection Issues:**
+```typescript
+// Add connection retry logic
+async function connectWithRetry(maxRetries = 5) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      await db.connect();
+      return;
+    } catch (error) {
+      if (i === maxRetries - 1) throw error;
+      await new Promise(r => setTimeout(r, 5000));
+    }
+  }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Monitoring" icon="chart-line" href="/guides/testing">
+    Set up comprehensive monitoring
+  </Card>
+  <Card title="Agent Configuration" icon="sliders" href="/guides/agent-configuration">
+    Optimize production configuration
+  </Card>
+</CardGroup>

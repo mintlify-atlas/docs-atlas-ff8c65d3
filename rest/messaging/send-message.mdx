@@ -1,0 +1,462 @@
+---
+title: Send Message
+description: Send a message to an agent and receive a response
+api: POST /agents/{agentId}/message
+---
+
+## Endpoint
+
+```
+POST /agents/{agentId}/message
+```
+
+Sends a message to an agent and receives a response. The agent processes the message using its configured character, actions, and providers.
+
+## Request
+
+### Path Parameters
+
+<ParamField path="agentId" type="string" required>
+  Unique identifier (UUID) of the agent to message
+</ParamField>
+
+### Headers
+
+<ParamField header="Content-Type" type="string" required>
+  Must be `application/json`
+</ParamField>
+
+<ParamField header="Authorization" type="string">
+  Bearer token for authentication (if required)
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="text" type="string" required>
+  The message text to send to the agent
+</ParamField>
+
+<ParamField body="userId" type="string">
+  Unique identifier for the user sending the message. If not provided, a default user ID is used.
+</ParamField>
+
+<ParamField body="userName" type="string">
+  Display name of the user sending the message
+</ParamField>
+
+<ParamField body="roomId" type="string">
+  Room or conversation ID. If not provided, a new room is created.
+</ParamField>
+
+<ParamField body="attachments" type="array">
+  Array of attachment objects (images, files, etc.)
+  
+  <ParamField body="attachments[].url" type="string">
+    URL of the attachment
+  </ParamField>
+  
+  <ParamField body="attachments[].type" type="string">
+    Attachment type: `image`, `file`, `video`, `audio`
+  </ParamField>
+  
+  <ParamField body="attachments[].title" type="string">
+    Attachment title or filename
+  </ParamField>
+</ParamField>
+
+<ParamField body="metadata" type="object">
+  Additional metadata to include with the message
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the message was processed successfully
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+  Message response details
+  
+  <ResponseField name="data.messageId" type="string" required>
+    Unique identifier for the user's message
+  </ResponseField>
+  
+  <ResponseField name="data.roomId" type="string" required>
+    Room or conversation ID
+  </ResponseField>
+  
+  <ResponseField name="data.agentResponses" type="array" required>
+    Array of agent response objects
+    
+    <ResponseField name="data.agentResponses[].text" type="string">
+      Response text from the agent
+    </ResponseField>
+    
+    <ResponseField name="data.agentResponses[].action" type="string">
+      Action taken by the agent (if any)
+    </ResponseField>
+    
+    <ResponseField name="data.agentResponses[].attachments" type="array">
+      Response attachments
+    </ResponseField>
+  </ResponseField>
+  
+  <ResponseField name="data.timestamp" type="number">
+    Unix timestamp when the message was processed
+  </ResponseField>
+</ResponseField>
+
+## Examples
+
+### Simple Message
+
+```bash
+curl -X POST http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Hello! How can you help me today?"
+  }'
+```
+
+### Message with User Context
+
+```bash
+curl -X POST http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/message \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "text": "What is the status of my order?",
+    "userId": "user-123",
+    "userName": "Alice Smith",
+    "metadata": {
+      "orderId": "ORDER-456",
+      "channel": "web"
+    }
+  }'
+```
+
+### Message in Existing Room
+
+```bash
+curl -X POST http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Thanks for the help!",
+    "userId": "user-123",
+    "roomId": "room-789"
+  }'
+```
+
+### Message with Attachments
+
+```bash
+curl -X POST http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Can you analyze this image?",
+    "userId": "user-123",
+    "attachments": [
+      {
+        "url": "https://example.com/image.jpg",
+        "type": "image",
+        "title": "Screenshot.jpg"
+      }
+    ]
+  }'
+```
+
+## Response Example
+
+### Success Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "messageId": "msg-550e8400-e29b-41d4-a716-446655440003",
+    "roomId": "room-660e8400-e29b-41d4-a716-446655440004",
+    "agentResponses": [
+      {
+        "text": "Hello! I'm here to help you with any questions you might have. I can assist with customer support, technical issues, and general information. What can I help you with today?",
+        "action": null,
+        "attachments": []
+      }
+    ],
+    "timestamp": 1709683200000
+  }
+}
+```
+
+### Response with Action
+
+```json
+{
+  "success": true,
+  "data": {
+    "messageId": "msg-550e8400-e29b-41d4-a716-446655440005",
+    "roomId": "room-660e8400-e29b-41d4-a716-446655440004",
+    "agentResponses": [
+      {
+        "text": "I've looked up your order status. Your order #ORDER-456 is currently being prepared for shipping.",
+        "action": "LOOKUP_ORDER",
+        "attachments": []
+      }
+    ],
+    "timestamp": 1709683260000
+  }
+}
+```
+
+## Code Examples
+
+### JavaScript/Node.js
+
+```javascript
+const agentId = "550e8400-e29b-41d4-a716-446655440000";
+
+const sendMessage = async (text, userId = 'user-123') => {
+  const response = await fetch(
+    `http://localhost:3000/agents/${agentId}/message`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text,
+        userId,
+        userName: 'Alice'
+      })
+    }
+  );
+  
+  const { success, data } = await response.json();
+  
+  if (success) {
+    console.log('Agent response:');
+    data.agentResponses.forEach(response => {
+      console.log(`- ${response.text}`);
+    });
+    return data;
+  }
+};
+
+// Send a message
+await sendMessage('Hello!');
+```
+
+### Python
+
+```python
+import requests
+
+agent_id = "550e8400-e29b-41d4-a716-446655440000"
+
+def send_message(text: str, user_id: str = "user-123"):
+    response = requests.post(
+        f'http://localhost:3000/agents/{agent_id}/message',
+        json={
+            'text': text,
+            'userId': user_id,
+            'userName': 'Alice'
+        }
+    )
+    
+    data = response.json()
+    
+    if data['success']:
+        print('Agent response:')
+        for resp in data['data']['agentResponses']:
+            print(f"- {resp['text']}")
+        return data['data']
+
+# Send a message
+send_message('Hello!')
+```
+
+### TypeScript
+
+```typescript
+interface SendMessageRequest {
+  text: string;
+  userId?: string;
+  userName?: string;
+  roomId?: string;
+  attachments?: Array<{
+    url: string;
+    type: string;
+    title?: string;
+  }>;
+  metadata?: Record<string, any>;
+}
+
+interface AgentResponse {
+  text: string;
+  action?: string | null;
+  attachments: any[];
+}
+
+interface SendMessageResponse {
+  success: boolean;
+  data: {
+    messageId: string;
+    roomId: string;
+    agentResponses: AgentResponse[];
+    timestamp: number;
+  };
+}
+
+const sendMessage = async (
+  agentId: string,
+  request: SendMessageRequest
+): Promise<SendMessageResponse> => {
+  const response = await fetch(
+    `http://localhost:3000/agents/${agentId}/message`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request)
+    }
+  );
+  
+  return await response.json();
+};
+
+// Usage
+const result = await sendMessage(
+  "550e8400-e29b-41d4-a716-446655440000",
+  {
+    text: "Hello!",
+    userId: "user-123",
+    userName: "Alice"
+  }
+);
+
+console.log(result.data.agentResponses[0].text);
+```
+
+## Error Responses
+
+### 404 Not Found
+
+```json
+{
+  "success": false,
+  "error": "Agent not found"
+}
+```
+
+### 400 Bad Request
+
+```json
+{
+  "success": false,
+  "error": "Message text is required"
+}
+```
+
+### 503 Service Unavailable
+
+```json
+{
+  "success": false,
+  "error": "Agent is not running. Start the agent first."
+}
+```
+
+### 500 Internal Server Error
+
+```json
+{
+  "success": false,
+  "error": "Failed to process message"
+}
+```
+
+## Message Processing
+
+When you send a message, the agent:
+
+1. **Receives Message** - Message is added to the conversation
+2. **Evaluates Context** - Analyzes conversation history and state
+3. **Decides Actions** - Determines if actions should be executed
+4. **Generates Response** - Creates a natural language response
+5. **Returns Result** - Sends response back to the user
+
+## Conversation Continuity
+
+To maintain conversation context:
+
+```javascript
+// First message creates a room
+const firstResponse = await sendMessage(agentId, {
+  text: "What's the weather?",
+  userId: "user-123"
+});
+
+const roomId = firstResponse.data.roomId;
+
+// Subsequent messages use the same room
+await sendMessage(agentId, {
+  text: "And tomorrow?",
+  userId: "user-123",
+  roomId: roomId  // Continue the conversation
+});
+```
+
+## Best Practices
+
+### Always Include User Context
+
+Provide userId and userName for better personalization:
+
+```javascript
+{
+  text: "Hello",
+  userId: "user-123",
+  userName: "Alice Smith"
+}
+```
+
+### Use Metadata for Context
+
+Include relevant context in metadata:
+
+```javascript
+{
+  text: "Check my order",
+  metadata: {
+    orderId: "ORDER-456",
+    customerId: "CUST-789",
+    source: "web-app"
+  }
+}
+```
+
+### Handle Long Responses
+
+Agent responses may be lengthy. Handle them appropriately:
+
+```javascript
+const response = await sendMessage(agentId, { text: "Explain quantum physics" });
+
+response.data.agentResponses.forEach(resp => {
+  // Split long text for display
+  const chunks = resp.text.match(/.{1,500}/g) || [];
+  chunks.forEach(chunk => console.log(chunk));
+});
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Get Messages" icon="list" href="/rest/messaging/get-messages">
+    Retrieve conversation history
+  </Card>
+  <Card title="Sessions" icon="clock" href="/rest/messaging/sessions">
+    Manage conversation sessions
+  </Card>
+  <Card title="Create Channel" icon="hashtag" href="/rest/messaging/create-channel">
+    Set up communication channels
+  </Card>
+</CardGroup>

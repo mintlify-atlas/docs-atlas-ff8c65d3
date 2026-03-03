@@ -1,0 +1,281 @@
+---
+title: Get Agent
+description: Retrieve details about a specific agent
+api: GET /agents/{agentId}
+---
+
+## Endpoint
+
+```
+GET /agents/{agentId}
+```
+
+Retrieves detailed information about a specific agent, including its character configuration, status, and runtime settings.
+
+## Request
+
+### Path Parameters
+
+<ParamField path="agentId" type="string" required>
+  Unique identifier (UUID) of the agent to retrieve
+</ParamField>
+
+### Headers
+
+<ParamField header="Authorization" type="string">
+  Bearer token for authentication (if required)
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+  Agent details
+  
+  <ResponseField name="data.agentId" type="string" required>
+    Unique identifier for the agent (UUID)
+  </ResponseField>
+  
+  <ResponseField name="data.name" type="string" required>
+    Name of the agent's character
+  </ResponseField>
+  
+  <ResponseField name="data.status" type="string" required>
+    Current status: `active` or `inactive`
+  </ResponseField>
+  
+  <ResponseField name="data.bio" type="string">
+    Biography or description of the agent
+  </ResponseField>
+  
+  <ResponseField name="data.lore" type="array">
+    Background story elements
+  </ResponseField>
+  
+  <ResponseField name="data.topics" type="array">
+    Topics the agent is knowledgeable about
+  </ResponseField>
+  
+  <ResponseField name="data.adjectives" type="array">
+    Personality adjectives
+  </ResponseField>
+  
+  <ResponseField name="data.style" type="object">
+    Communication style settings
+  </ResponseField>
+  
+  <ResponseField name="data.settings" type="object">
+    Agent configuration settings
+  </ResponseField>
+  
+  <ResponseField name="data.plugins" type="array">
+    Enabled plugins
+  </ResponseField>
+  
+  <ResponseField name="data.enabled" type="boolean">
+    Whether the agent is enabled
+  </ResponseField>
+  
+  <ResponseField name="data.createdAt" type="number">
+    Unix timestamp when the agent was created
+  </ResponseField>
+  
+  <ResponseField name="data.updatedAt" type="number">
+    Unix timestamp when the agent was last updated
+  </ResponseField>
+</ResponseField>
+
+## Examples
+
+### Basic Request
+
+```bash
+curl -X GET http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Content-Type: application/json"
+```
+
+### With Authentication
+
+```bash
+curl -X GET http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json"
+```
+
+## Response Example
+
+### Success Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "agentId": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "Alice",
+    "status": "active",
+    "bio": "A helpful AI assistant specializing in customer support",
+    "lore": [
+      "Has extensive training in customer service",
+      "Specializes in resolving user issues quickly",
+      "Known for empathy and understanding"
+    ],
+    "topics": [
+      "customer support",
+      "product knowledge",
+      "troubleshooting"
+    ],
+    "adjectives": [
+      "helpful",
+      "patient",
+      "knowledgeable",
+      "friendly"
+    ],
+    "style": {
+      "all": [
+        "Be concise and clear",
+        "Show empathy for user concerns",
+        "Provide actionable solutions"
+      ],
+      "chat": [
+        "Use a warm, conversational tone",
+        "Ask clarifying questions when needed"
+      ]
+    },
+    "settings": {
+      "model": "gpt-4",
+      "embeddingModel": "text-embedding-3-small"
+    },
+    "plugins": ["bootstrap"],
+    "enabled": true,
+    "createdAt": 1709510400000,
+    "updatedAt": 1709596800000
+  }
+}
+```
+
+## Code Examples
+
+### JavaScript/Node.js
+
+```javascript
+const agentId = "550e8400-e29b-41d4-a716-446655440000";
+
+const response = await fetch(`http://localhost:3000/agents/${agentId}`, {
+  method: 'GET',
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+const { success, data } = await response.json();
+
+if (success) {
+  console.log(`Agent: ${data.name}`);
+  console.log(`Status: ${data.status}`);
+  console.log(`Bio: ${data.bio}`);
+}
+```
+
+### Python
+
+```python
+import requests
+
+agent_id = "550e8400-e29b-41d4-a716-446655440000"
+
+response = requests.get(f'http://localhost:3000/agents/{agent_id}')
+data = response.json()
+
+if data['success']:
+    agent = data['data']
+    print(f"Agent: {agent['name']}")
+    print(f"Status: {agent['status']}")
+    print(f"Bio: {agent['bio']}")
+```
+
+### TypeScript
+
+```typescript
+interface Agent {
+  agentId: string;
+  name: string;
+  status: 'active' | 'inactive';
+  bio?: string;
+  lore?: string[];
+  topics?: string[];
+  adjectives?: string[];
+  style?: {
+    all?: string[];
+    chat?: string[];
+    post?: string[];
+  };
+  settings?: Record<string, any>;
+  plugins?: string[];
+  enabled?: boolean;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+interface GetAgentResponse {
+  success: boolean;
+  data: Agent;
+}
+
+const agentId = "550e8400-e29b-41d4-a716-446655440000";
+
+const response = await fetch(`http://localhost:3000/agents/${agentId}`);
+const { success, data }: GetAgentResponse = await response.json();
+
+if (success) {
+  console.log(`Agent: ${data.name}`);
+}
+```
+
+## Error Responses
+
+### 404 Not Found
+
+```json
+{
+  "success": false,
+  "error": "Agent not found"
+}
+```
+
+### 400 Bad Request
+
+```json
+{
+  "success": false,
+  "error": "Invalid agent ID format"
+}
+```
+
+### 500 Internal Server Error
+
+```json
+{
+  "success": false,
+  "error": "Failed to retrieve agent"
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Update Agent" icon="edit" href="/rest/agents/update">
+    Modify agent configuration
+  </Card>
+  <Card title="Start Agent" icon="play" href="/rest/agents/start">
+    Start the agent's runtime
+  </Card>
+  <Card title="Send Message" icon="paper-plane" href="/rest/messaging/send-message">
+    Interact with the agent
+  </Card>
+  <Card title="Delete Agent" icon="trash" href="/rest/agents/delete">
+    Remove the agent
+  </Card>
+</CardGroup>

@@ -1,0 +1,315 @@
+---
+title: 'Agent Configuration'
+description: 'Learn how to configure agents in elizaOS with environment variables, character files, and runtime settings'
+---
+
+ElizaOS agents are configured through a combination of environment variables, character files, and runtime settings. This guide covers all configuration options available.
+
+## Environment Configuration
+
+The `.env` file controls server, database, and provider settings. See `.env.example` for all available options.
+
+<Steps>
+  <Step title="Create Environment File">
+    Copy the example environment file:
+    ```bash
+    cp .env.example .env
+    ```
+  </Step>
+
+  <Step title="Configure AI Provider">
+    Set your AI model provider API key:
+    ```bash .env
+    # OpenAI
+    OPENAI_API_KEY=sk-...
+    
+    # Or use Anthropic Claude
+    ANTHROPIC_API_KEY=...
+    
+    # Or use Google Gemini
+    GOOGLE_GENERATIVE_AI_API_KEY=...
+    
+    # Or use local Ollama
+    OLLAMA_API_ENDPOINT=http://localhost:11434
+    ```
+  </Step>
+
+  <Step title="Configure Server Settings">
+    ```bash .env
+    # Server configuration
+    SERVER_PORT=3000
+    SERVER_HOST=0.0.0.0
+    NODE_ENV=development
+    
+    # Enable/disable web UI
+    ELIZA_UI_ENABLE=true
+    
+    # API authentication (optional)
+    ELIZA_SERVER_AUTH_TOKEN=your-secret-token
+    ```
+  </Step>
+
+  <Step title="Database Configuration">
+    Choose between PostgreSQL or PGLite:
+    ```bash .env
+    # PostgreSQL (recommended for production)
+    POSTGRES_URL=postgresql://user:pass@localhost:5432/eliza
+    
+    # Or PGLite (in-memory or file-based)
+    PGLITE_DATA_DIR=.eliza/.elizadb
+    # For in-memory: PGLITE_DATA_DIR=memory://
+    ```
+  </Step>
+</Steps>
+
+## Character Configuration
+
+Character files define your agent's personality, knowledge, and behavior.
+
+### Character File Structure
+
+```json characters/my-agent.json
+{
+  "name": "MyAgent",
+  "bio": [
+    "Expert in technology and programming",
+    "Helpful and knowledgeable assistant",
+    "Focuses on clear, concise explanations"
+  ],
+  "lore": [
+    "Has deep knowledge of AI and machine learning",
+    "Experienced in software development"
+  ],
+  "messageExamples": [
+    [
+      {
+        "user": "{{user1}}",
+        "content": { "text": "How do I create a plugin?" }
+      },
+      {
+        "user": "MyAgent",
+        "content": {
+          "text": "Creating a plugin is straightforward. You'll need to export an object with actions, providers, and evaluators..."
+        }
+      }
+    ]
+  ],
+  "postExamples": [],
+  "topics": [
+    "programming",
+    "AI development",
+    "software architecture"
+  ],
+  "style": {
+    "all": [
+      "Be clear and concise",
+      "Use technical terminology when appropriate",
+      "Provide code examples when helpful"
+    ],
+    "chat": [
+      "Be conversational but professional",
+      "Ask clarifying questions when needed"
+    ],
+    "post": [
+      "Share insights and knowledge",
+      "Keep posts informative and engaging"
+    ]
+  },
+  "adjectives": [
+    "knowledgeable",
+    "helpful",
+    "precise",
+    "technical"
+  ]
+}
+```
+
+### Loading Characters
+
+<CodeGroup>
+```typescript From File
+import { AgentRuntime } from '@elizaos/core';
+import fs from 'fs';
+
+const characterPath = './characters/my-agent.json';
+const character = JSON.parse(fs.readFileSync(characterPath, 'utf-8'));
+
+const runtime = new AgentRuntime({
+  character,
+  // ... other options
+});
+```
+
+```bash Remote URL
+# Load character from URL
+REMOTE_CHARACTER_URLS=https://example.com/character.json,https://example.com/agent2.json
+```
+</CodeGroup>
+
+## Runtime Settings
+
+Configure runtime behavior programmatically:
+
+```typescript
+const runtime = new AgentRuntime({
+  character: myCharacter,
+  
+  // Database adapter
+  databaseAdapter: new PostgresDatabaseAdapter({
+    connectionString: process.env.POSTGRES_URL
+  }),
+  
+  // Model provider
+  modelProvider: ModelProviderName.OPENAI,
+  
+  // Token limits
+  maxInputTokens: 100000,
+  maxOutputTokens: 8192,
+  
+  // Custom plugins
+  plugins: [myCustomPlugin],
+  
+  // Server configuration
+  serverPort: 3000,
+});
+```
+
+## Provider Timeout Configuration
+
+Control how long providers can run:
+
+```bash .env
+# Total timeout for all providers (milliseconds)
+PROVIDERS_TOTAL_TIMEOUT_MS=1000
+```
+
+Providers supply context to the agent. If they exceed this timeout, the pipeline aborts with an error message.
+
+## Data Directory Configuration
+
+Customize where elizaOS stores data:
+
+```bash .env
+# Base data directory (default: .eliza)
+ELIZA_DATA_DIR=.eliza
+
+# Database directory
+ELIZA_DATABASE_DIR=.eliza/.elizadb
+
+# Characters storage
+ELIZA_DATA_DIR_CHARACTERS=.eliza/data/characters
+
+# AI-generated content
+ELIZA_DATA_DIR_GENERATED=.eliza/data/generated
+
+# Agent uploads
+ELIZA_DATA_DIR_UPLOADS_AGENTS=.eliza/data/uploads/agents
+
+# Channel uploads
+ELIZA_DATA_DIR_UPLOADS_CHANNELS=.eliza/data/uploads/channels
+```
+
+## Plugin Configuration
+
+### Skip Bootstrap Plugin
+
+```bash .env
+# Skip loading the bootstrap plugin
+# Only use if you're replacing it with a custom plugin
+IGNORE_BOOTSTRAP=true
+```
+
+<Warning>
+Do not skip the bootstrap plugin unless you're providing alternative implementations of core actions and providers.
+</Warning>
+
+### Plugin-Specific Configuration
+
+Many plugins require their own configuration. Check the plugin's `package.json` for `agentConfig` properties:
+
+```json Plugin package.json
+{
+  "name": "@elizaos/plugin-example",
+  "agentConfig": {
+    "EXAMPLE_API_KEY": {
+      "required": true,
+      "description": "API key for example service"
+    },
+    "EXAMPLE_WEBHOOK_URL": {
+      "required": false,
+      "description": "Optional webhook URL"
+    }
+  }
+}
+```
+
+## Development Mode Settings
+
+```bash .env
+# Non-interactive CLI mode (useful for CI/CD)
+ELIZA_NONINTERACTIVE=true
+
+# Development vs Production
+NODE_ENV=development  # or 'production'
+```
+
+## Channel Response Configuration
+
+Control where your agent responds:
+
+```bash .env
+# Additional channels to always respond in
+ALWAYS_RESPOND_CHANNELS=CUSTOM_CHANNEL_1,CUSTOM_CHANNEL_2
+
+# Additional sources to always respond to
+ALWAYS_RESPOND_SOURCES=custom_source,another_source
+```
+
+<Tip>
+By default, agents always respond in DM channels, voice DMs, self channels, and API channels. Platform mentions and replies also trigger responses automatically.
+</Tip>
+
+## Advanced Settings
+
+### Disable Image Description
+
+If you don't want the agent to process image attachments:
+
+```typescript
+runtime.setSetting('DISABLE_IMAGE_DESCRIPTION', true);
+```
+
+### Express Payload Size
+
+```bash .env
+# Maximum request payload size (default: 2mb)
+EXPRESS_MAX_PAYLOAD=10mb
+```
+
+## Configuration Best Practices
+
+<Tip>
+- Store secrets in `.env` and never commit them to version control
+- Use different `.env` files for development, staging, and production
+- Document custom environment variables in your README
+- Validate required configuration at startup
+</Tip>
+
+<Warning>
+When deploying to production:
+- Set `NODE_ENV=production`
+- Use a proper database like PostgreSQL instead of in-memory PGLite
+- Enable `ELIZA_SERVER_AUTH_TOKEN` for API security
+- Review and limit `ALWAYS_RESPOND_CHANNELS` for specific use cases
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Creating Plugins" icon="puzzle-piece" href="/guides/creating-plugins">
+    Learn how to extend agent functionality with custom plugins
+  </Card>
+  <Card title="Custom Actions" icon="bolt" href="/guides/custom-actions">
+    Build custom actions for your agents
+  </Card>
+</CardGroup>

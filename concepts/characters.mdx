@@ -1,0 +1,770 @@
+---
+title: Characters
+description: Defining agent personalities and behaviors in elizaOS
+---
+
+# Characters
+
+A **Character** is the blueprint that defines an agent's personality, knowledge, and behavior. It's a configuration object (often loaded from JSON) that shapes how your agent interacts with users.
+
+## Character vs Agent
+
+Understand the key distinction:
+
+- **Character**: Static configuration defining personality and capabilities
+- **Agent**: Running instance of a character with state and memory
+
+Think of a character as a class definition and an agent as an instance of that class.
+
+```typescript
+// Character - the blueprint (stateless)
+const assistantCharacter: Character = {
+  name: "Assistant",
+  bio: ["Helpful AI assistant"],
+  plugins: ["@elizaos/plugin-openai"]
+};
+
+// Agent - the running instance (stateful)
+const runtime = new AgentRuntime({ character: assistantCharacter });
+await runtime.initialize();
+// Now the agent exists in the database with ID, timestamps, memories
+```
+
+## Character Structure
+
+### Complete Interface
+
+```typescript
+interface Character {
+  // Identity
+  id?: string;                    // Unique identifier (auto-generated if omitted)
+  name?: string;                  // Display name
+  username?: string;              // Platform username
+  
+  // Personality & Behavior
+  bio?: string[];                 // Multi-line biography
+  system?: string;                // System prompt override
+  adjectives?: string[];          // Personality traits
+  style?: StyleConfig;            // Communication style
+  
+  // Knowledge & Examples
+  messageExamples?: MessageExampleGroup[];  // Conversation examples
+  postExamples?: string[];                  // Social media posts
+  topics?: string[];                        // Topics of interest
+  knowledge?: KnowledgeSourceItem[];        // Static knowledge base
+  
+  // Templates
+  templates?: Record<string, TemplateType>;
+  
+  // Configuration
+  plugins?: string[];             // Plugin names to load
+  settings?: CharacterSettings;   // Runtime settings
+  secrets?: Record<string, string>;  // API keys, tokens
+  
+  // Advanced Features
+  advancedPlanning?: boolean;     // Enable multi-step planning
+  advancedMemory?: boolean;       // Enable conversation summarization
+}
+```
+
+## Core Properties
+
+### Identity
+
+```typescript
+const character: Character = {
+  name: "Dr. Research",
+  username: "dr_research",  // For social platforms
+  bio: [
+    "PhD in Computer Science with focus on AI",
+    "Passionate about making complex topics accessible",
+    "Always eager to help students and researchers"
+  ]
+};
+```
+
+**Tips:**
+- Use a descriptive, memorable name
+- Multi-line bio for better context
+- Bio should explain who the character is and what they do
+
+### Personality Traits
+
+```typescript
+const character: Character = {
+  name: "Coach",
+  adjectives: [
+    "motivational",
+    "supportive",
+    "energetic",
+    "direct",
+    "optimistic"
+  ],
+  topics: [
+    "fitness",
+    "nutrition",
+    "goal setting",
+    "habit formation",
+    "mental wellness"
+  ]
+};
+```
+
+**Adjectives** shape the agent's tone and manner:
+- Choose 3-7 adjectives that capture the essence
+- Mix personality and communication style
+- Be specific: "thoughtful" vs "helpful"
+
+**Topics** guide conversation focus:
+- List areas of expertise
+- Include related/adjacent topics
+- Used for context filtering
+
+### Communication Style
+
+```typescript
+interface StyleConfig {
+  all?: string[];    // Applied to all contexts
+  chat?: string[];   // Chat/messaging specific
+  post?: string[];   // Social media posts
+}
+
+const character: Character = {
+  name: "TechBot",
+  style: {
+    all: [
+      "Be concise and clear",
+      "Use technical terms when appropriate",
+      "Provide examples to illustrate points"
+    ],
+    chat: [
+      "Keep responses under 3 paragraphs",
+      "Ask clarifying questions if needed",
+      "Use numbered lists for multi-step answers"
+    ],
+    post: [
+      "Start with an attention-grabbing statement",
+      "Use hashtags sparingly",
+      "Include a call-to-action"
+    ]
+  }
+};
+```
+
+## Message Examples
+
+Examples teach the agent conversation patterns and response styles.
+
+### Example Structure
+
+```typescript
+interface MessageExampleGroup {
+  examples: MessageExample[];
+}
+
+interface MessageExample {
+  user: string;     // "user" or agent name
+  content: Content; // Message content
+}
+
+interface Content {
+  text: string;
+  attachments?: Media[];
+  inReplyTo?: string;
+}
+```
+
+### Basic Examples
+
+```typescript
+const character: Character = {
+  name: "Tutor",
+  messageExamples: [
+    {
+      examples: [
+        {
+          user: "user",
+          content: { text: "I don't understand recursion" }
+        },
+        {
+          user: "Tutor",
+          content: {
+            text: "Let's break it down! Recursion is when a function calls itself. Think of it like looking at yourself in two mirrors facing each other - each reflection contains another reflection.\n\nHere's a simple example: calculating factorial.\n\n```\nfunction factorial(n) {\n  if (n <= 1) return 1;  // Base case\n  return n * factorial(n - 1);  // Recursive call\n}\n```\n\nWhat part would you like me to explain further?"
+          }
+        },
+        {
+          user: "user",
+          content: { text: "What's the base case for?" }
+        },
+        {
+          user: "Tutor",
+          content: {
+            text: "Great question! The base case is crucial - it tells the recursion when to STOP. Without it, the function would call itself forever (stack overflow).\n\nIn our factorial example, `if (n <= 1) return 1` is the base case. When n reaches 1, we stop recursing and start returning values back up the chain."
+          }
+        }
+      ]
+    }
+  ]
+};
+```
+
+### Multiple Example Groups
+
+Provide diverse scenarios:
+
+```typescript
+const character: Character = {
+  name: "Support",
+  messageExamples: [
+    // Scenario 1: Technical troubleshooting
+    {
+      examples: [
+        {
+          user: "user",
+          content: { text: "My API calls are failing with 401" }
+        },
+        {
+          user: "Support",
+          content: {
+            text: "A 401 error means authentication failed. Let's check:\n\n1. Is your API key correct?\n2. Is it properly formatted in the header?\n3. Has the key expired?\n\nCan you share how you're making the request? (Remove sensitive data)"
+          }
+        }
+      ]
+    },
+    // Scenario 2: Feature questions
+    {
+      examples: [
+        {
+          user: "user",
+          content: { text: "Do you support webhooks?" }
+        },
+        {
+          user: "Support",
+          content: {
+            text: "Yes! We support webhooks for real-time event notifications. You can configure them in your dashboard under Settings > Webhooks.\n\nWe support these events:\n- user.created\n- transaction.completed\n- subscription.updated\n\nWould you like help setting one up?"
+          }
+        }
+      ]
+    },
+    // Scenario 3: Billing inquiry
+    {
+      examples: [
+        {
+          user: "user",
+          content: { text: "How does pricing work?" }
+        },
+        {
+          user: "Support",
+          content: {
+            text: "Our pricing is usage-based:\n\n- Free tier: 1,000 requests/month\n- Pro: $29/mo + $0.01 per request over 10k\n- Enterprise: Custom pricing for high volume\n\nAll tiers include full API access and email support. Pro and Enterprise get priority support and SLA guarantees.\n\nWhich tier are you considering?"
+          }
+        }
+      ]
+    }
+  ]
+};
+```
+
+### Best Practices for Examples
+
+<Accordion title="Example writing guidelines">
+
+1. **Variety**: Cover different question types and scenarios
+2. **Realistic**: Use actual questions users might ask
+3. **Complete**: Show full conversational exchanges, not just single Q&A
+4. **Style consistency**: Demonstrate your desired tone and structure
+5. **Edge cases**: Include how to handle unclear or complex questions
+6. **Length**: 3-7 example groups with 2-6 exchanges each
+7. **Natural**: Write as you would actually respond, not stiffly
+8. **Specific**: Show concrete examples, code snippets, numbered lists
+
+</Accordion>
+
+## Post Examples
+
+For social media personalities:
+
+```typescript
+const character: Character = {
+  name: "TechInfluencer",
+  postExamples: [
+    "Just discovered an amazing productivity hack: instead of context-switching between tasks, batch similar work together. Went from 6 hours of meetings to 2 focused blocks. Game changer. 🚀 #ProductivityTips",
+    
+    "Hot take: Documentation is not just for users - it's for your future self. Spent 30 mins today thanking past me for leaving detailed comments. #DevLife",
+    
+    "Shipping beats perfection. Launched our MVP today with 60% of planned features. Guess what? Users love it. They care about solving their problem, not our feature list. 💡",
+    
+    "The best code is code you don't write. Before adding a new library, ask: can I solve this with 20 lines of vanilla code? Often yes. #SimplifyFirst"
+  ]
+};
+```
+
+**Post examples teach:**
+- Tone and voice
+- Post structure (hook, body, CTA)
+- Use of hashtags and emojis
+- Content themes
+- Length and formatting
+
+## Knowledge Sources
+
+Provide static knowledge for RAG (Retrieval Augmented Generation):
+
+```typescript
+interface KnowledgeSourceItem {
+  item: 
+    | { case: "path"; value: string }
+    | {
+        case: "directory";
+        value: {
+          directory: string;
+          shared?: boolean;  // Shared across all agents
+        };
+      };
+}
+
+const character: Character = {
+  name: "ProductExpert",
+  knowledge: [
+    // Single document
+    {
+      item: {
+        case: "path",
+        value: "./docs/product-manual.md"
+      }
+    },
+    
+    // Entire directory
+    {
+      item: {
+        case: "directory",
+        value: {
+          directory: "./docs/features",
+          shared: true
+        }
+      }
+    },
+    
+    // Another directory
+    {
+      item: {
+        case: "directory",
+        value: {
+          directory: "./docs/api-reference",
+          shared: false  // Private to this agent
+        }
+      }
+    }
+  ]
+};
+```
+
+### Knowledge Processing
+
+During initialization, knowledge files are:
+
+1. **Read** from disk
+2. **Chunked** into ~1000 token fragments
+3. **Embedded** using TEXT_EMBEDDING model
+4. **Stored** as FRAGMENT memories in database
+5. **Retrieved** via semantic search when relevant
+
+**Supported formats:**
+- Markdown (.md)
+- Text (.txt)
+- JSON (.json)
+- PDF (.pdf) - requires PDF plugin
+
+## Templates
+
+Templates control agent behavior in different contexts:
+
+```typescript
+type TemplateType = 
+  | string  // Static template
+  | ((params: { state: State }) => string);  // Dynamic template
+
+const character: Character = {
+  name: "Assistant",
+  templates: {
+    // Core templates
+    messageHandler: `You are {{agentName}}, {{bio}}
+
+Your personality: {{adjectives}}
+Your expertise: {{topics}}
+
+Recent conversation:
+{{recentMessages}}
+
+User's message: {{currentMessage}}
+
+Respond in character, being helpful and engaging.`,
+
+    postCreation: `Create a social media post as {{agentName}}.
+
+Your style:
+{{style}}
+
+Recent posts for reference:
+{{postExamples}}
+
+Topic: {{topic}}
+
+Create an engaging post that matches your voice.`,
+
+    imageDescription: `Analyze this image and provide a detailed description.
+
+Focus on:
+- Main subjects and their actions
+- Setting and environment
+- Colors and mood
+- Notable details
+
+Be specific and objective.`,
+
+    // Dynamic template
+    customGreeting: ({ state }) => {
+      const timeOfDay = new Date().getHours() < 12 ? "morning" : "afternoon";
+      const userName = state.values?.userName || "there";
+      return `Good ${timeOfDay}, ${userName}! How can I help you today?`;
+    }
+  }
+};
+```
+
+### Template Variables
+
+Built-in variables available in all templates:
+
+| Variable | Description | Example |
+|----------|-------------|----------|
+| `{{agentName}}` | Character name | "Assistant" |
+| `{{bio}}` | Biography | "I am a helpful AI..." |
+| `{{adjectives}}` | Personality traits | "helpful, patient, curious" |
+| `{{topics}}` | Topics list | "technology, science, art" |
+| `{{style}}` | Style guidelines | "Be concise and clear..." |
+| `{{recentMessages}}` | Conversation history | "User: ...\nAgent: ..." |
+| `{{currentMessage}}` | Current user message | "Hello!" |
+| `{{postExamples}}` | Sample posts | "Just shipped..." |
+
+**Custom variables** from providers:
+
+```typescript
+const timeProvider: Provider = {
+  name: "time",
+  get: async () => ({
+    values: {
+      currentTime: new Date().toISOString(),
+      dayOfWeek: new Date().toLocaleDateString('en', { weekday: 'long' })
+    }
+  })
+};
+
+// Use in template:
+const template = "Today is {{dayOfWeek}}. The time is {{currentTime}}.";
+```
+
+## Settings and Secrets
+
+### Settings
+
+Non-sensitive configuration:
+
+```typescript
+interface CharacterSettings {
+  // Framework settings
+  CONVERSATION_LENGTH?: number;        // Messages in context (default: 100)
+  ACTION_PLANNING?: boolean;           // Multi-action execution (default: true)
+  LLM_MODE?: "DEFAULT" | "SMALL" | "LARGE";  // Force model size
+  CHECK_SHOULD_RESPOND?: boolean;      // Evaluate shouldRespond (default: true)
+  ENABLE_AUTONOMY?: boolean;           // Autonomous operation (default: false)
+  DISABLE_IMAGE_DESCRIPTION?: boolean; // Skip vision (default: false)
+  MAX_WORKING_MEMORY_ENTRIES?: number; // Action result cache (default: 50)
+  
+  // Plugin settings
+  [key: string]: any;  // Plugin-specific settings
+}
+
+const character: Character = {
+  name: "ConfiguredAgent",
+  settings: {
+    CONVERSATION_LENGTH: 50,
+    ACTION_PLANNING: true,
+    LLM_MODE: "DEFAULT",
+    
+    // Plugin-specific
+    DISCORD_GUILD_ID: "123456789",
+    WEATHER_DEFAULT_LOCATION: "San Francisco"
+  }
+};
+```
+
+### Secrets
+
+Sensitive credentials:
+
+```typescript
+const character: Character = {
+  name: "SecureAgent",
+  secrets: {
+    // LLM providers
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    
+    // Platform tokens
+    DISCORD_BOT_TOKEN: process.env.DISCORD_BOT_TOKEN,
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    
+    // Service credentials
+    DATABASE_URL: process.env.DATABASE_URL,
+    REDIS_URL: process.env.REDIS_URL,
+    
+    // Custom APIs
+    WEATHER_API_KEY: process.env.WEATHER_API_KEY,
+    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY
+  }
+};
+```
+
+**Security notes:**
+- Secrets can be encrypted at rest (see settings module)
+- Use environment variables, never hardcode
+- Secrets take precedence over settings in `getSetting()`
+- Sandbox mode tokenizes secrets for multi-tenant safety
+
+## Advanced Features
+
+### Advanced Planning
+
+Enables multi-step action execution:
+
+```typescript
+const character: Character = {
+  name: "Planner",
+  advancedPlanning: true,  // Load planning plugin
+  plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-openai"]
+};
+
+const runtime = new AgentRuntime({ character });
+await runtime.initialize();
+
+// Agent can now:
+// 1. Generate multi-step plans
+// 2. Execute actions in sequence
+// 3. Use results from previous actions
+// 4. Adapt plan based on outcomes
+```
+
+### Advanced Memory
+
+Enables conversation summarization and long-term memory:
+
+```typescript
+const character: Character = {
+  name: "Rememberer",
+  advancedMemory: true,  // Load memory plugin
+  plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-openai"]
+};
+
+const runtime = new AgentRuntime({ character });
+await runtime.initialize();
+
+// Agent gains:
+// - Automatic conversation summarization
+// - Long-term memory extraction
+// - Context summary provider
+// - Memory consolidation evaluators
+```
+
+## Character Files
+
+### JSON Format
+
+```json
+// characters/assistant.json
+{
+  "name": "Assistant",
+  "username": "helpful_ai",
+  "bio": [
+    "I am a helpful AI assistant",
+    "I specialize in answering questions and providing information",
+    "I aim to be clear, accurate, and friendly"
+  ],
+  "adjectives": [
+    "helpful",
+    "knowledgeable",
+    "patient",
+    "friendly",
+    "articulate"
+  ],
+  "topics": [
+    "technology",
+    "science",
+    "programming",
+    "general knowledge"
+  ],
+  "style": {
+    "all": [
+      "Be clear and concise",
+      "Use examples when helpful",
+      "Acknowledge uncertainty when appropriate"
+    ],
+    "chat": [
+      "Keep responses focused",
+      "Ask clarifying questions",
+      "Use formatting for readability"
+    ]
+  },
+  "messageExamples": [
+    {
+      "examples": [
+        {
+          "user": "user",
+          "content": { "text": "What is TypeScript?" }
+        },
+        {
+          "user": "Assistant",
+          "content": {
+            "text": "TypeScript is a strongly-typed superset of JavaScript that adds optional static typing. It helps catch errors during development and improves code quality through better tooling and IDE support.\n\nKey benefits:\n- Type safety\n- Better autocomplete\n- Easier refactoring\n- Scales well for large projects\n\nWould you like to know more about any specific aspect?"
+          }
+        }
+      ]
+    }
+  ],
+  "plugins": [
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-openai"
+  ],
+  "settings": {
+    "CONVERSATION_LENGTH": 50
+  }
+}
+```
+
+### Loading Character Files
+
+```typescript
+import { parseCharacter } from "@elizaos/core";
+import fs from "fs";
+
+// Load and parse
+const characterData = JSON.parse(
+  fs.readFileSync("./characters/assistant.json", "utf-8")
+);
+
+const character = parseCharacter(characterData);
+
+// Create runtime
+const runtime = new AgentRuntime({ character });
+await runtime.initialize();
+```
+
+### TypeScript Format
+
+```typescript
+// characters/assistant.ts
+import type { Character } from "@elizaos/core";
+
+export const assistantCharacter: Character = {
+  name: "Assistant",
+  bio: ["I am a helpful AI assistant"],
+  adjectives: ["helpful", "knowledgeable"],
+  topics: ["technology", "science"],
+  
+  messageExamples: [
+    {
+      examples: [
+        {
+          user: "user",
+          content: { text: "Hello!" }
+        },
+        {
+          user: "Assistant",
+          content: { text: "Hi! How can I help you today?" }
+        }
+      ]
+    }
+  ],
+  
+  plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-openai"],
+  
+  secrets: {
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY || ""
+  }
+};
+```
+
+## Character Validation
+
+Validate character configuration:
+
+```typescript
+import { validateCharacterConfig } from "@elizaos/core";
+
+const { isValid, errors } = validateCharacterConfig(character);
+
+if (!isValid) {
+  console.error("Character validation failed:");
+  errors.forEach(error => console.error(`- ${error}`));
+} else {
+  console.log("Character is valid!");
+}
+```
+
+## Best Practices
+
+<Accordion title="Character design guidelines">
+
+### Identity
+- Choose a clear, memorable name
+- Write detailed, multi-faceted bio
+- Define distinct personality traits
+
+### Examples
+- Provide 5-10 diverse conversation examples
+- Show both simple and complex interactions
+- Demonstrate error handling and edge cases
+- Keep examples realistic and natural
+
+### Knowledge
+- Organize knowledge into focused documents
+- Keep documents under 5000 words each
+- Update knowledge when information changes
+- Use clear, well-structured markdown
+
+### Templates
+- Start with default templates, customize as needed
+- Use dynamic templates for context-dependent behavior
+- Test templates with various inputs
+- Keep templates focused and clear
+
+### Settings
+- Store credentials in environment variables
+- Use appropriate conversation length for use case
+- Enable advanced features only when needed
+- Test with different settings combinations
+
+### Style
+- Define clear communication guidelines
+- Be consistent across all examples
+- Match style to target audience
+- Balance personality with professionalism
+
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Agents" icon="robot" href="/concepts/agents">
+    Learn about agent instances
+  </Card>
+  <Card title="Examples" icon="books" href="/examples/characters">
+    Character configuration examples
+  </Card>
+  <Card title="Plugins" icon="plug" href="/concepts/plugins">
+    Available plugins
+  </Card>
+  <Card title="Templates" icon="file-code" href="/guides/templates">
+    Template customization guide
+  </Card>
+</CardGroup>

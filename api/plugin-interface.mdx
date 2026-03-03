@@ -1,0 +1,428 @@
+---
+title: "Plugin Interface"
+description: "Core Plugin interface and configuration for extending ElizaOS agents"
+---
+
+## Overview
+
+The Plugin interface is the foundation for extending ElizaOS agents. Plugins can register actions, providers, evaluators, services, models, routes, and event handlers.
+
+## Plugin Interface
+
+```typescript
+interface Plugin {
+  name: string;
+  description: string;
+  init?: (config: Record<string, string>, runtime: IAgentRuntime) => Promise<void>;
+  config?: Record<string, string | number | boolean | null>;
+  services?: ServiceClass[];
+  componentTypes?: ComponentTypeDefinition[];
+  actions?: Action[];
+  providers?: Provider[];
+  evaluators?: Evaluator[];
+  adapter?: IDatabaseAdapter;
+  models?: {
+    [K in keyof ModelParamsMap]?: (
+      runtime: IAgentRuntime,
+      params: ModelParamsMap[K]
+    ) => Promise<PluginModelResult<K>>;
+  };
+  events?: PluginEvents;
+  routes?: Route[];
+  tests?: TestSuite[];
+  dependencies?: string[];
+  testDependencies?: string[];
+  priority?: number;
+  schema?: Record<string, JsonValue | object>;
+}
+```
+
+## Core Properties
+
+### name
+
+**Type:** `string` (required)
+
+Unique identifier for the plugin. Should follow the naming convention `@elizaos/plugin-{name}`.
+
+```typescript
+name: "@elizaos/plugin-example"
+```
+
+### description
+
+**Type:** `string` (required)
+
+Human-readable description of the plugin's functionality.
+
+```typescript
+description: "Provides Twitter integration for social media interactions"
+```
+
+### init
+
+**Type:** `(config: Record<string, string>, runtime: IAgentRuntime) => Promise<void>` (optional)
+
+Initialization function called when the plugin is loaded. Use this to:
+- Register custom model handlers
+- Set up external API connections
+- Validate required configuration
+- Initialize plugin-specific state
+
+```typescript
+init: async (config, runtime) => {
+  // Validate required environment variables
+  const apiKey = runtime.getSetting("TWITTER_API_KEY");
+  if (!apiKey) {
+    throw new Error("TWITTER_API_KEY required");
+  }
+  
+  // Register custom model handler
+  runtime.registerModel(
+    "TWITTER_SENTIMENT",
+    async (runtime, params) => {
+      // Custom model implementation
+      return { sentiment: "positive", score: 0.85 };
+    },
+    "plugin-twitter",
+    10 // priority
+  );
+  
+  runtime.logger.success("Twitter plugin initialized");
+}
+```
+
+### config
+
+**Type:** `Record<string, string | number | boolean | null>` (optional)
+
+Plugin-specific configuration with primitive values.
+
+```typescript
+config: {
+  maxRetries: 3,
+  timeout: 5000,
+  enableCaching: true,
+  apiVersion: "v2"
+}
+```
+
+## Component Registration
+
+### actions
+
+**Type:** `Action[]` (optional)
+
+Array of actions the agent can perform. Actions are executable operations triggered by the agent.
+
+```typescript
+actions: [
+  {
+    name: "SEND_TWEET",
+    description: "Post a tweet to Twitter",
+    handler: async (runtime, message, state, options, callback) => {
+      const text = options?.parameters?.text as string;
+      // Send tweet implementation
+      return {
+        success: true,
+        text: `Tweet posted: ${text}`
+      };
+    },
+    validate: async (runtime, message, state) => {
+      // Validation logic
+      return true;
+    },
+    parameters: [
+      {
+        name: "text",
+        description: "The tweet content to post",
+        required: true,
+        schema: { type: "string", maxLength: 280 }
+      }
+    ]
+  }
+]
+```
+
+### providers
+
+**Type:** `Provider[]` (optional)
+
+Data providers that supply context to the agent's state.
+
+```typescript
+providers: [
+  {
+    name: "TWITTER_PROFILE",
+    description: "Provides Twitter profile information",
+    get: async (runtime, message, state) => {
+      const profile = await fetchTwitterProfile(runtime);
+      return {
+        text: `Twitter: @${profile.username} (${profile.followers} followers)`,
+        values: {
+          twitterUsername: profile.username,
+          twitterFollowers: profile.followers
+        },
+        data: { profile }
+      };
+    }
+  }
+]
+```
+
+### evaluators
+
+**Type:** `Evaluator[]` (optional)
+
+Evaluators that assess messages and extract information.
+
+```typescript
+evaluators: [
+  {
+    name: "TWITTER_SENTIMENT",
+    description: "Analyzes sentiment of tweets",
+    phase: "post", // or "pre"
+    alwaysRun: false,
+    handler: async (runtime, message, state) => {
+      // Sentiment analysis implementation
+      return {
+        success: true,
+        values: { sentiment: "positive" }
+      };
+    },
+    validate: async (runtime, message, state) => {
+      return message.content.source === "twitter";
+    },
+    examples: []
+  }
+]
+```
+
+### services
+
+**Type:** `ServiceClass[]` (optional)
+
+Service classes that extend runtime functionality.
+
+```typescript
+services: [
+  class TwitterService extends Service {
+    static serviceType = "twitter";
+    
+    constructor(runtime?: IAgentRuntime) {
+      super();
+    }
+    
+    static async start(runtime: IAgentRuntime): Promise<Service> {
+      const service = new TwitterService(runtime);
+      // Initialize service
+      return service;
+    }
+    
+    async stop(): Promise<void> {
+      // Cleanup
+    }
+  }
+]
+```
+
+### models
+
+**Type:** `{ [K in keyof ModelParamsMap]?: (runtime, params) => Promise<PluginModelResult<K>> }` (optional)
+
+Custom model handlers for AI operations.
+
+```typescript
+models: {
+  TEXT_SMALL: async (runtime, params) => {
+    // Custom LLM implementation
+    const response = await callCustomLLM(params.prompt);
+    return response;
+  },
+  IMAGE_DESCRIPTION: async (runtime, params) => {
+    // Custom vision model
+    return {
+      description: "A photo of...",
+      title: "Image"
+    };
+  }
+}
+```
+
+### events
+
+**Type:** `PluginEvents` (optional)
+
+Event handlers that respond to runtime events.
+
+```typescript
+events: {
+  [EventType.MESSAGE_RECEIVED]: [
+    async (payload: MessagePayload) => {
+      console.log("Message received:", payload.message.content.text);
+    }
+  ],
+  [EventType.WORLD_JOINED]: [
+    async (payload: WorldPayload) => {
+      console.log("Joined world:", payload.world.name);
+    }
+  ]
+}
+```
+
+### routes
+
+**Type:** `Route[]` (optional)
+
+HTTP routes exposed by the plugin.
+
+```typescript
+routes: [
+  {
+    type: "POST",
+    path: "/api/twitter/webhook",
+    public: false,
+    handler: async (req, res, runtime) => {
+      const event = req.body;
+      // Process webhook
+      res.json({ success: true });
+    }
+  },
+  {
+    type: "GET",
+    path: "/api/twitter/status",
+    public: true,
+    name: "twitter-status",
+    handler: async (req, res, runtime) => {
+      res.json({ status: "connected" });
+    }
+  }
+]
+```
+
+## Advanced Properties
+
+### dependencies
+
+**Type:** `string[]` (optional)
+
+Other plugins that must be loaded before this one.
+
+```typescript
+dependencies: ["@elizaos/plugin-node"]
+```
+
+### testDependencies
+
+**Type:** `string[]` (optional)
+
+Plugins required only for testing.
+
+```typescript
+testDependencies: ["@elizaos/plugin-test-utils"]
+```
+
+### priority
+
+**Type:** `number` (optional)
+
+Plugin loading priority (higher loads first).
+
+```typescript
+priority: 10
+```
+
+### adapter
+
+**Type:** `IDatabaseAdapter` (optional)
+
+Custom database adapter implementation.
+
+### componentTypes
+
+**Type:** `ComponentTypeDefinition[]` (optional)
+
+Entity component type definitions with JSON schemas.
+
+### tests
+
+**Type:** `TestSuite[]` (optional)
+
+Test suites for the plugin.
+
+### schema
+
+**Type:** `Record<string, JsonValue | object>` (optional)
+
+Additional plugin schema metadata.
+
+## Complete Example
+
+```typescript
+import { Plugin, Action, Provider, Service, EventType } from "@elizaos/core";
+
+export const twitterPlugin: Plugin = {
+  name: "@elizaos/plugin-twitter",
+  description: "Twitter integration for social media interactions",
+  
+  init: async (config, runtime) => {
+    const apiKey = runtime.getSetting("TWITTER_API_KEY");
+    if (!apiKey) {
+      throw new Error("TWITTER_API_KEY required");
+    }
+    runtime.logger.success("Twitter plugin initialized");
+  },
+  
+  actions: [
+    {
+      name: "SEND_TWEET",
+      description: "Post a tweet to Twitter",
+      handler: async (runtime, message, state, options) => {
+        const text = options?.parameters?.text as string;
+        return { success: true, text: `Tweet posted: ${text}` };
+      },
+      validate: async () => true,
+      parameters: [
+        {
+          name: "text",
+          description: "Tweet content",
+          required: true,
+          schema: { type: "string", maxLength: 280 }
+        }
+      ]
+    }
+  ],
+  
+  providers: [
+    {
+      name: "TWITTER_PROFILE",
+      get: async (runtime, message, state) => {
+        return {
+          text: "Twitter profile data",
+          values: { username: "agent" }
+        };
+      }
+    }
+  ],
+  
+  services: [TwitterService],
+  
+  events: {
+    [EventType.MESSAGE_SENT]: [
+      async (payload) => {
+        console.log("Message sent to Twitter");
+      }
+    ]
+  },
+  
+  dependencies: ["@elizaos/plugin-node"]
+};
+```
+
+## See Also
+
+- [Plugin Hooks](/api/plugin-hooks)
+- [Plugin Schemas](/api/plugin-schemas)
+- [Actions](/api/actions)
+- [Providers](/api/providers)
+- [Services](/api/services)

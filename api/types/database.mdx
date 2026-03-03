@@ -1,0 +1,535 @@
+---
+title: "Database Types"
+description: "Type definitions for database operations and adapters in elizaOS"
+---
+
+## Overview
+
+Database types define the interface for database operations, including memory storage, agent management, entity tracking, logging, and relationship management.
+
+## LogBodyValue
+
+Allowed value types for log body fields.
+
+```typescript
+type LogBodyValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | UUID
+  | Error
+  | LogBodyValue[]
+  | { [key: string]: LogBodyValue };
+```
+
+## BaseLogBody
+
+Base log body type with common properties.
+
+```typescript
+interface BaseLogBody {
+  runId?: string | UUID;
+  parentRunId?: string | UUID;
+  messageId?: UUID;
+  roomId?: UUID;
+  entityId?: UUID;
+  source?: string;
+  startTime?: number | bigint;
+  endTime?: number | bigint;
+  duration?: number | bigint;
+  metadata?: Record<string, LogBodyValue>;
+}
+```
+
+**Properties:**
+- `runId?` - Unique identifier for the run session
+- `parentRunId?` - Parent run ID for nested operations
+- `messageId?` - Associated message ID
+- `roomId?` - Associated room/conversation ID
+- `entityId?` - Entity performing the operation
+- `source?` - Source system or component
+- `startTime?` - Operation start timestamp
+- `endTime?` - Operation end timestamp
+- `duration?` - Operation duration in milliseconds
+- `metadata?` - Additional metadata
+
+## ActionLogBody
+
+Log body for action execution logs.
+
+```typescript
+interface ActionLogBody extends BaseLogBody {
+  action?: string;
+  actionName?: string;
+  actionId?: UUID | string;
+  message?: string;
+  messageId?: UUID;
+  state?: Record<string, LogBodyValue>;
+  responses?: Array<Record<string, LogBodyValue>>;
+  content?: ActionLogContent;
+  result?: ActionLogResult;
+  isVoidReturn?: boolean;
+  prompts?: ActionLogPrompt[];
+  promptCount?: number;
+  planStep?: string;
+  planThought?: string;
+}
+```
+
+**Properties:**
+- All properties from `BaseLogBody`
+- `action?` - Action identifier
+- `actionName?` - Human-readable action name
+- `actionId?` - Unique action instance ID
+- `message?` - Log message
+- `state?` - State at time of action
+- `responses?` - Action responses
+- `content?` - Action content structure
+- `result?` - Action result
+- `isVoidReturn?` - Whether action returned void
+- `prompts?` - Prompt tracking information
+- `promptCount?` - Number of prompts used
+- `planStep?` - Current planning step
+- `planThought?` - Planning thought process
+
+## EvaluatorLogBody
+
+Log body for evaluator logs.
+
+```typescript
+interface EvaluatorLogBody extends BaseLogBody {
+  messageId?: UUID;
+  state?: Record<string, LogBodyValue>;
+}
+```
+
+**Properties:**
+- All properties from `BaseLogBody`
+- `messageId?` - Message being evaluated
+- `state?` - State during evaluation
+
+## ModelLogBody
+
+Log body for model inference logs.
+
+```typescript
+interface ModelLogBody extends BaseLogBody {
+  params?: Record<string, LogBodyValue>;
+  actionContext?: ModelActionContext;
+  timestamp?: number | bigint;
+  executionTime?: number | bigint;
+  response?: JsonValue;
+}
+```
+
+**Properties:**
+- All properties from `BaseLogBody`
+- `params?` - Model parameters
+- `actionContext?` - Action context information
+- `timestamp?` - Request timestamp
+- `executionTime?` - Model execution time
+- `response?` - Model response
+
+## EmbeddingLogBody
+
+Log body for embedding generation logs.
+
+```typescript
+interface EmbeddingLogBody extends BaseLogBody {
+  duration?: number | bigint;
+  error?: string | Error;
+  hasIntent?: boolean;
+}
+```
+
+**Properties:**
+- All properties from `BaseLogBody`
+- `duration?` - Embedding generation duration
+- `error?` - Error if generation failed
+- `hasIntent?` - Whether the text has intent
+
+## Log
+
+Represents a log entry in the database.
+
+```typescript
+interface Log {
+  entityId: UUID;
+  roomId?: UUID;
+  body: LogBody;
+  createdAt: Date;
+}
+```
+
+**Properties:**
+- `entityId` - Entity that created the log
+- `roomId?` - Associated room ID
+- `body` - Log body (one of the log body types)
+- `createdAt` - Log creation timestamp
+
+## RunStatus
+
+Status values for agent runs.
+
+```typescript
+type RunStatus = "started" | "completed" | "timeout" | "error";
+```
+
+**Values:**
+- `started` - Run has started
+- `completed` - Run completed successfully
+- `timeout` - Run timed out
+- `error` - Run encountered an error
+
+## AgentRunSummary
+
+Summary of an agent run session.
+
+```typescript
+interface AgentRunSummary {
+  status: RunStatus | ProtoDbRunStatus;
+  startedAt: number | bigint | null;
+  endedAt: number | bigint | null;
+  durationMs: number | bigint | null;
+  metadata?: Record<string, JsonValue>;
+}
+```
+
+**Properties:**
+- `status` - Current run status
+- `startedAt` - Start timestamp (Unix milliseconds)
+- `endedAt` - End timestamp (Unix milliseconds)
+- `durationMs` - Duration in milliseconds
+- `metadata?` - Additional run metadata
+
+## IDatabaseAdapter
+
+Interface for database operations. All database adapters must implement this interface.
+
+```typescript
+interface IDatabaseAdapter<DB extends object = object> {
+  db: DB;
+  
+  // Initialization
+  initialize(config?: Record<string, string | number | boolean | null>): Promise<void>;
+  init(): Promise<void>;
+  isReady(): Promise<boolean>;
+  close(): Promise<void>;
+  getConnection(): Promise<DB>;
+  
+  // Migration methods
+  runPluginMigrations?(
+    plugins: Array<{ name: string; schema?: Record<string, JsonValue | object> }>,
+    options?: { verbose?: boolean; force?: boolean; dryRun?: boolean }
+  ): Promise<void>;
+  runMigrations?(migrationsPaths?: string[]): Promise<void>;
+  
+  // Entity context for RLS
+  withEntityContext?<T>(
+    entityId: UUID | null,
+    callback: () => Promise<T>
+  ): Promise<T>;
+  
+  // Agent management
+  getAgent(agentId: UUID): Promise<Agent | null>;
+  getAgents(): Promise<Partial<Agent>[]>;
+  createAgent(agent: Partial<Agent>): Promise<boolean>;
+  updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean>;
+  deleteAgent(agentId: UUID): Promise<boolean>;
+  
+  // Entity management
+  getEntitiesByIds(entityIds: UUID[]): Promise<Entity[] | null>;
+  getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]>;
+  createEntities(entities: Entity[]): Promise<boolean>;
+  updateEntity(entity: Entity): Promise<void>;
+  
+  // Component management
+  getComponent(entityId: UUID, type: string, worldId?: UUID, sourceEntityId?: UUID): Promise<Component | null>;
+  getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Promise<Component[]>;
+  createComponent(component: Component): Promise<boolean>;
+  updateComponent(component: Component): Promise<void>;
+  deleteComponent(componentId: UUID): Promise<void>;
+  
+  // Memory operations
+  ensureEmbeddingDimension(dimension: number): Promise<void>;
+  getMemories(params: {
+    entityId?: UUID;
+    agentId?: UUID;
+    count?: number;
+    offset?: number;
+    unique?: boolean;
+    tableName: string;
+    start?: number;
+    end?: number;
+    roomId?: UUID;
+    worldId?: UUID;
+  }): Promise<Memory[]>;
+  getMemoryById(id: UUID): Promise<Memory | null>;
+  getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>;
+  getMemoriesByRoomIds(params: {
+    tableName: string;
+    roomIds: UUID[];
+    limit?: number;
+  }): Promise<Memory[]>;
+  getMemoriesByWorldId(params: {
+    worldId: UUID;
+    count?: number;
+    tableName?: string;
+  }): Promise<Memory[]>;
+  getCachedEmbeddings(params: {
+    query_table_name: string;
+    query_threshold: number;
+    query_input: string;
+    query_field_name: string;
+    query_field_sub_name: string;
+    query_match_count: number;
+  }): Promise<{ embedding: number[]; levenshtein_score: number }[]>;
+  searchMemories(params: {
+    embedding: number[];
+    match_threshold?: number;
+    count?: number;
+    unique?: boolean;
+    tableName: string;
+    query?: string;
+    roomId?: UUID;
+    worldId?: UUID;
+    entityId?: UUID;
+  }): Promise<Memory[]>;
+  createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID>;
+  updateMemory(memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }): Promise<boolean>;
+  deleteMemory(memoryId: UUID): Promise<void>;
+  deleteManyMemories(memoryIds: UUID[]): Promise<void>;
+  deleteAllMemories(roomId: UUID, tableName: string): Promise<void>;
+  countMemories(roomId: UUID, unique?: boolean, tableName?: string): Promise<number>;
+  
+  // Logging
+  log(params: { body: LogBody; entityId: UUID; roomId: UUID; type: string }): Promise<void>;
+  getLogs(params: {
+    entityId?: UUID;
+    roomId?: UUID;
+    type?: string;
+    count?: number;
+    offset?: number;
+  }): Promise<Log[]>;
+  deleteLog(logId: UUID): Promise<void>;
+  getAgentRunSummaries?(params: {
+    limit?: number;
+    roomId?: UUID;
+    status?: RunStatus | "all";
+    from?: number;
+    to?: number;
+    entityId?: UUID;
+  }): Promise<AgentRunSummaryResult>;
+  
+  // World and Room management
+  createWorld(world: World): Promise<UUID>;
+  getWorld(id: UUID): Promise<World | null>;
+  removeWorld(id: UUID): Promise<void>;
+  getAllWorlds(): Promise<World[]>;
+  updateWorld(world: World): Promise<void>;
+  getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null>;
+  createRooms(rooms: Room[]): Promise<UUID[]>;
+  deleteRoom(roomId: UUID): Promise<void>;
+  deleteRoomsByWorldId(worldId: UUID): Promise<void>;
+  updateRoom(room: Room): Promise<void>;
+  getRoomsForParticipant(entityId: UUID): Promise<UUID[]>;
+  getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]>;
+  getRoomsByWorld(worldId: UUID): Promise<Room[]>;
+  
+  // Participant management
+  removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
+  getParticipantsForEntity(entityId: UUID): Promise<Participant[]>;
+  getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
+  isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean>;
+  addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean>;
+  getParticipantUserState(roomId: UUID, entityId: UUID): Promise<"FOLLOWED" | "MUTED" | null>;
+  setParticipantUserState(roomId: UUID, entityId: UUID, state: "FOLLOWED" | "MUTED" | null): Promise<void>;
+  
+  // Relationship management
+  createRelationship(params: {
+    sourceEntityId: UUID;
+    targetEntityId: UUID;
+    tags?: string[];
+    metadata?: Metadata;
+  }): Promise<boolean>;
+  updateRelationship(relationship: Relationship): Promise<void>;
+  getRelationship(params: {
+    sourceEntityId: UUID;
+    targetEntityId: UUID;
+  }): Promise<Relationship | null>;
+  getRelationships(params: {
+    entityId: UUID;
+    tags?: string[];
+  }): Promise<Relationship[]>;
+  
+  // Cache operations
+  getCache<T>(key: string): Promise<T | undefined>;
+  setCache<T>(key: string, value: T): Promise<boolean>;
+  deleteCache(key: string): Promise<boolean>;
+  
+  // Task management
+  createTask(task: Task): Promise<UUID>;
+  getTasks(params: { roomId?: UUID; tags?: string[]; entityId?: UUID }): Promise<Task[]>;
+  getTask(id: UUID): Promise<Task | null>;
+  getTasksByName(name: string): Promise<Task[]>;
+  updateTask(id: UUID, task: Partial<Task>): Promise<void>;
+  deleteTask(id: UUID): Promise<void>;
+  
+  // Pairing (DM access control)
+  getPairingRequests(channel: PairingChannel, agentId: UUID): Promise<PairingRequest[]>;
+  createPairingRequest(request: PairingRequest): Promise<UUID>;
+  updatePairingRequest(request: PairingRequest): Promise<void>;
+  deletePairingRequest(id: UUID): Promise<void>;
+  getPairingAllowlist(channel: PairingChannel, agentId: UUID): Promise<PairingAllowlistEntry[]>;
+  createPairingAllowlistEntry(entry: PairingAllowlistEntry): Promise<UUID>;
+  deletePairingAllowlistEntry(id: UUID): Promise<void>;
+}
+```
+
+## EmbeddingSearchResult
+
+Result interface for embedding similarity searches.
+
+```typescript
+interface EmbeddingSearchResult {
+  levenshtein_score?: number;
+}
+```
+
+**Properties:**
+- `levenshtein_score?` - Levenshtein distance score for text similarity
+
+## MemoryRetrievalOptions
+
+Options for memory retrieval operations.
+
+```typescript
+interface MemoryRetrievalOptions {
+  roomId: UUID;
+  agentId?: UUID;
+  start?: number | bigint;
+  end?: number | bigint;
+}
+```
+
+**Properties:**
+- `roomId` - Room ID to retrieve memories from
+- `agentId?` - Optional agent ID filter
+- `start?` - Start timestamp for time range
+- `end?` - End timestamp for time range
+
+## MemorySearchOptions
+
+Options for memory search operations.
+
+```typescript
+interface MemorySearchOptions {
+  roomId: UUID;
+  agentId?: UUID;
+  metadata?: Partial<MemoryMetadata>;
+  match_threshold?: number;
+}
+```
+
+**Properties:**
+- `roomId` - Room ID to search in
+- `agentId?` - Optional agent ID filter
+- `metadata?` - Metadata filters
+- `match_threshold?` - Minimum similarity threshold (0-1)
+
+## MultiRoomMemoryOptions
+
+Options for multi-room memory retrieval.
+
+```typescript
+interface MultiRoomMemoryOptions {
+  roomIds: UUID[];
+  agentId?: UUID;
+}
+```
+
+**Properties:**
+- `roomIds` - Array of room IDs to retrieve from
+- `agentId?` - Optional agent ID filter
+
+## DbConnection
+
+Base interface for database connection objects.
+
+```typescript
+interface DbConnection {
+  isConnected?: boolean;
+  close?: () => Promise<void>;
+}
+```
+
+**Properties:**
+- `isConnected?` - Whether the connection is currently active
+- `close?()` - Method to close the connection
+
+## VECTOR_DIMS
+
+Allowable vector dimensions for embeddings.
+
+```typescript
+const VECTOR_DIMS = {
+  SMALL: 384,
+  MEDIUM: 512,
+  LARGE: 768,
+  XL: 1024,
+  XXL: 1536,
+  XXXL: 3072,
+} as const;
+```
+
+**Values:**
+- `SMALL` - 384 dimensions
+- `MEDIUM` - 512 dimensions
+- `LARGE` - 768 dimensions
+- `XL` - 1024 dimensions
+- `XXL` - 1536 dimensions
+- `XXXL` - 3072 dimensions
+
+## Usage Example
+
+```typescript
+import { IDatabaseAdapter, Memory } from "@elizaos/core";
+
+// Using the database adapter
+async function storeMemory(
+  adapter: IDatabaseAdapter,
+  memory: Memory
+) {
+  // Create a memory
+  const memoryId = await adapter.createMemory(
+    memory,
+    "messages",
+    true // unique
+  );
+  
+  // Search for similar memories
+  const similar = await adapter.searchMemories({
+    embedding: memory.embedding,
+    match_threshold: 0.8,
+    count: 10,
+    tableName: "messages",
+    roomId: memory.roomId
+  });
+  
+  // Get agent
+  const agent = await adapter.getAgent(memory.agentId);
+  
+  // Log an action
+  await adapter.log({
+    body: {
+      action: "STORE_MEMORY",
+      metadata: { memoryId }
+    },
+    entityId: memory.agentId,
+    roomId: memory.roomId,
+    type: "action"
+  });
+}
+```

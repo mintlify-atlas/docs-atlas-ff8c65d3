@@ -1,0 +1,409 @@
+---
+title: Telegram Integration
+description: Connect your elizaOS agent to Telegram for messaging bot experiences
+---
+
+## Overview
+
+The Telegram integration enables your elizaOS agent to interact with users through Telegram's messaging platform. Your agent can send and receive messages, handle commands, work with inline keyboards, and more.
+
+## Prerequisites
+
+Before setting up Telegram integration, you need:
+
+- A Telegram account
+- A bot token from [@BotFather](https://t.me/botfather)
+
+## Setup
+
+<Steps>
+
+### Create a Telegram Bot
+
+1. Open Telegram and search for [@BotFather](https://t.me/botfather)
+2. Start a chat and send the `/newbot` command
+3. Follow the prompts to choose a name and username for your bot
+4. BotFather will provide you with a token that looks like: `123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11`
+5. Copy this token - you'll need it for configuration
+
+### Configure Bot Settings
+
+Optional but recommended settings via BotFather:
+
+1. `/setdescription` - Set a description that users see in the bot's profile
+2. `/setabouttext` - Set the "About" text
+3. `/setuserpic` - Upload a profile picture
+4. `/setcommands` - Define command list with descriptions
+5. `/setprivacy` - Enable/disable privacy mode (affects group message access)
+
+### Set Environment Variables
+
+Add the following to your `.env` file:
+
+```bash
+# Required
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+```
+
+### Add the Telegram Plugin
+
+In your character configuration file, add the Telegram plugin:
+
+```json
+{
+  "name": "YourAgent",
+  "plugins": [
+    "@elizaos/plugin-telegram"
+  ],
+  "settings": {
+    "channels": {
+      "telegram": {
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+</Steps>
+
+## Configuration
+
+### Environment Variables
+
+The Telegram integration supports the following environment variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `TELEGRAM_BOT_TOKEN` | Yes | Your bot token from BotFather |
+
+**Alternative names supported:**
+- `TELEGRAM_TOKEN` → `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_API_TOKEN` → `TELEGRAM_BOT_TOKEN`
+- `TG_BOT_TOKEN` → `TELEGRAM_BOT_TOKEN`
+
+### Character Settings
+
+Configure Telegram-specific behavior in your character file:
+
+```json
+{
+  "settings": {
+    "channels": {
+      "telegram": {
+        "enabled": true,
+        "parseMode": "Markdown",
+        "disableNotification": false,
+        "allowedUpdates": ["message", "callback_query", "inline_query"]
+      }
+    }
+  }
+}
+```
+
+## Features
+
+### Message Handling
+
+Your agent automatically receives and can respond to messages:
+
+```typescript
+// The agent receives messages and can respond
+// Response format:
+{
+  "chatId": 123456789,
+  "text": "Hello! How can I help you today?",
+  "parseMode": "Markdown"
+}
+```
+
+### Text Formatting
+
+Telegram supports rich text formatting:
+
+```typescript
+// Markdown format (default)
+{
+  "text": "*bold* _italic_ `code` [link](https://example.com)"
+}
+
+// HTML format
+{
+  "text": "<b>bold</b> <i>italic</i> <code>code</code> <a href='https://example.com'>link</a>",
+  "parseMode": "HTML"
+}
+```
+
+### Media Messages
+
+Send various media types:
+
+```typescript
+// Send photo
+{
+  "action": "sendPhoto",
+  "chatId": 123456789,
+  "photo": "https://example.com/image.jpg",
+  "caption": "Check out this image!"
+}
+
+// Send document
+{
+  "action": "sendDocument",
+  "chatId": 123456789,
+  "document": "file:///path/to/document.pdf",
+  "caption": "Here's the document you requested"
+}
+
+// Send audio
+{
+  "action": "sendAudio",
+  "chatId": 123456789,
+  "audio": "https://example.com/audio.mp3",
+  "title": "Audio File"
+}
+
+// Send video
+{
+  "action": "sendVideo",
+  "chatId": 123456789,
+  "video": "https://example.com/video.mp4",
+  "caption": "Video content"
+}
+```
+
+### Inline Keyboards
+
+Create interactive buttons:
+
+```typescript
+{
+  "text": "Choose an option:",
+  "replyMarkup": {
+    "inline_keyboard": [
+      [
+        { "text": "Option 1", "callback_data": "opt1" },
+        { "text": "Option 2", "callback_data": "opt2" }
+      ],
+      [
+        { "text": "Visit Website", "url": "https://example.com" }
+      ]
+    ]
+  }
+}
+```
+
+### Commands
+
+Handle slash commands:
+
+```typescript
+// Common commands to implement:
+// /start - Welcome new users
+// /help - Show help information
+// /settings - User preferences
+// /about - Bot information
+```
+
+Define commands in BotFather with:
+```
+start - Start interacting with the bot
+help - Get help and available commands
+settings - Configure your preferences
+about - Learn more about this bot
+```
+
+### Reply and Quote
+
+Reply to specific messages:
+
+```typescript
+{
+  "chatId": 123456789,
+  "text": "Replying to your message",
+  "replyToMessageId": 987654321
+}
+```
+
+### Edit and Delete
+
+Modify or remove messages:
+
+```typescript
+// Edit message
+{
+  "action": "editMessageText",
+  "chatId": 123456789,
+  "messageId": 987654321,
+  "text": "Updated message content"
+}
+
+// Delete message
+{
+  "action": "deleteMessage",
+  "chatId": 123456789,
+  "messageId": 987654321
+}
+```
+
+### Chat Actions
+
+Show typing indicator or other actions:
+
+```typescript
+{
+  "action": "sendChatAction",
+  "chatId": 123456789,
+  "action": "typing" // typing, upload_photo, upload_video, etc.
+}
+```
+
+### Group Chat Features
+
+Handle group interactions:
+
+```typescript
+// Get chat information
+{
+  "action": "getChat",
+  "chatId": 123456789
+}
+
+// Get chat member info
+{
+  "action": "getChatMember",
+  "chatId": 123456789,
+  "userId": 987654321
+}
+
+// Leave chat
+{
+  "action": "leaveChat",
+  "chatId": 123456789
+}
+```
+
+### Inline Queries
+
+Respond to inline queries (when users mention your bot in other chats):
+
+```typescript
+// This requires enabling inline mode in BotFather
+// Use /setinline command to set placeholder text
+```
+
+## Privacy and Security
+
+### Privacy Mode
+
+By default, bots in groups only receive:
+- Messages that start with `/` (commands)
+- Messages that mention the bot
+- Replies to the bot's messages
+
+Disable privacy mode in BotFather with `/setprivacy` if your bot needs to see all messages.
+
+<Warning>
+Only disable privacy mode if absolutely necessary for your bot's functionality. Users can see whether privacy mode is enabled in the bot's profile.
+</Warning>
+
+### User Data
+
+Best practices:
+- Only store necessary user data
+- Implement `/deletedata` command for GDPR compliance
+- Encrypt sensitive information
+- Clear old data regularly
+
+## Plugin Auto-Loading
+
+If you set `TELEGRAM_BOT_TOKEN` in your environment, the Telegram plugin will automatically load:
+
+```typescript
+// From character.ts:249
+const plugins = [
+  ...(env.TELEGRAM_BOT_TOKEN?.trim() ? ["@elizaos/plugin-telegram"] : [])
+];
+```
+
+## Webhook vs Long Polling
+
+Telegram supports two methods for receiving updates:
+
+### Long Polling (Default)
+
+The bot regularly checks for new messages. Suitable for:
+- Development and testing
+- Bots without a public domain
+- Simple deployments
+
+### Webhook (Production)
+
+Telegram sends updates to your server URL. Better for:
+- Production deployments
+- High-traffic bots
+- When you have a public HTTPS domain
+
+To set webhook:
+```bash
+curl -X POST https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://yourdomain.com/webhook"}'
+```
+
+## Troubleshooting
+
+### Bot doesn't respond
+
+1. Verify your `TELEGRAM_BOT_TOKEN` is correct
+2. Check that you've sent `/start` to the bot
+3. If in a group, ensure privacy mode settings are correct
+4. Check console logs for error messages
+
+### Messages not formatted correctly
+
+1. Verify `parseMode` is set correctly ("Markdown" or "HTML")
+2. Check for special characters that need escaping
+3. Ensure markup syntax is valid
+
+### Media not sending
+
+1. Check file size limits (photos: 10MB, files: 50MB)
+2. Verify URL is publicly accessible
+3. For local files, use `file:///absolute/path`
+4. Ensure file format is supported
+
+### Commands not working in groups
+
+1. Check privacy mode settings in BotFather
+2. Verify the bot has been added to the group
+3. Ensure commands are properly registered
+
+## Best Practices
+
+1. **Respond quickly** - Telegram users expect fast responses
+2. **Use typing indicators** - Show `typing` action for longer processing
+3. **Keep messages concise** - Mobile users appreciate brevity
+4. **Use inline keyboards** - They're more intuitive than custom keyboards
+5. **Handle errors gracefully** - Provide helpful error messages
+6. **Test in private first** - Create a test bot before going public
+7. **Implement /help** - Make it easy for users to discover features
+8. **Use message editing** - Update messages instead of sending new ones when possible
+
+## Rate Limits
+
+Telegram has rate limits to prevent spam:
+
+- **Messages to same chat**: 1 message per second
+- **Messages to different chats**: 30 messages per second across all chats
+- **Bulk notifications**: 30 messages per second
+
+The Telegram API will return error code 429 if you exceed limits. Implement exponential backoff for retries.
+
+## Related Resources
+
+- [Telegram Bot API Documentation](https://core.telegram.org/bots/api)
+- [BotFather Guide](https://core.telegram.org/bots#botfather)
+- [Telegram Bot Features](https://core.telegram.org/bots/features)
+- [elizaOS Plugin Architecture](/plugins/architecture)
+- [Create a Plugin Guide](/guides/create-a-plugin)

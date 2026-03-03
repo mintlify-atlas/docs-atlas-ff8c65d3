@@ -1,0 +1,447 @@
+---
+title: "Runtime Types"
+description: "Type definitions for the agent runtime environment in elizaOS"
+---
+
+## Overview
+
+The runtime types define the core runtime environment for an agent, including methods for database interaction, plugin management, event handling, state composition, model usage, and task management.
+
+## IAgentRuntime
+
+Represents the core runtime environment for an agent. Defines methods for database interaction, plugin management, event handling, state composition, model usage, and task management.
+
+```typescript
+interface IAgentRuntime extends IDatabaseAdapter<object> {
+  // Properties
+  agentId: UUID;
+  character: Character;
+  enableAutonomy: boolean;
+  initPromise: Promise<void>;
+  messageService: IMessageService | null;
+  providers: Provider[];
+  actions: Action[];
+  evaluators: Evaluator[];
+  plugins: Plugin[];
+  services: Map<ServiceTypeName, Service[]>;
+  events: RuntimeEventStorage;
+  fetch?: typeof fetch | null;
+  routes: Route[];
+  logger: Logger;
+  stateCache: Map<string, State>;
+  logLevelOverrides: Map<string, string>;
+  sandboxMode?: boolean;
+  sandboxTokenManager?: SandboxTokenManager | null;
+  
+  // Methods (see below for details)
+}
+```
+
+### Properties
+
+- `agentId` - Unique identifier for this agent instance
+- `character` - The character configuration for this agent
+- `enableAutonomy` - Whether autonomous behavior is enabled
+- `initPromise` - Promise that resolves when initialization completes
+- `messageService` - Service for handling messages
+- `providers` - Registered context providers
+- `actions` - Registered actions
+- `evaluators` - Registered evaluators
+- `plugins` - Loaded plugins
+- `services` - Map of registered services by type
+- `events` - Event handler storage
+- `fetch?` - Fetch API implementation
+- `routes` - Registered HTTP routes
+- `logger` - Logger instance
+- `stateCache` - Cache for state objects
+- `logLevelOverrides` - Per-component log level overrides
+- `sandboxMode?` - Whether runtime is in sandbox mode (default: false)
+- `sandboxTokenManager?` - Token manager for secret obfuscation in sandbox mode
+
+### Plugin Management
+
+```typescript
+registerPlugin(plugin: Plugin): Promise<void>;
+initialize(options?: { skipMigrations?: boolean }): Promise<void>;
+```
+
+**Methods:**
+- `registerPlugin()` - Register a plugin with the runtime
+- `initialize()` - Initialize the runtime, optionally skipping database migrations
+
+### Service Management
+
+```typescript
+getService<T extends Service>(service: ServiceTypeName | string): T | null;
+getServicesByType<T extends Service>(service: ServiceTypeName | string): T[];
+getAllServices(): Map<ServiceTypeName, Service[]>;
+registerService(service: ServiceClass): Promise<void>;
+getServiceLoadPromise(serviceType: ServiceTypeName): Promise<Service>;
+getRegisteredServiceTypes(): ServiceTypeName[];
+hasService(serviceType: ServiceTypeName | string): boolean;
+```
+
+**Methods:**
+- `getService()` - Get a service instance by type
+- `getServicesByType()` - Get all services of a specific type
+- `getAllServices()` - Get all registered services
+- `registerService()` - Register a new service class
+- `getServiceLoadPromise()` - Get a promise that resolves when service loads
+- `getRegisteredServiceTypes()` - Get list of registered service types
+- `hasService()` - Check if a service type is registered
+
+### Settings Management
+
+```typescript
+setSetting(
+  key: string,
+  value: string | boolean | null,
+  secret?: boolean,
+): void;
+
+getSetting(key: string): string | boolean | number | null;
+```
+
+**Methods:**
+- `setSetting()` - Set a configuration value
+- `getSetting()` - Get a configuration value
+
+### Configuration Methods
+
+```typescript
+getConversationLength(): number;
+isActionPlanningEnabled(): boolean;
+getLLMMode(): LLMModeType;
+isCheckShouldRespondEnabled(): boolean;
+```
+
+**Methods:**
+- `getConversationLength()` - Get the maximum conversation length
+- `isActionPlanningEnabled()` - Check if multi-action planning is enabled (default: true)
+- `getLLMMode()` - Get LLM mode: `DEFAULT`, `SMALL`, or `LARGE`
+- `isCheckShouldRespondEnabled()` - Check if shouldRespond evaluation is enabled (default: true)
+
+### Action Processing
+
+```typescript
+processActions(
+  message: Memory,
+  responses: Memory[],
+  state?: State,
+  callback?: HandlerCallback,
+  options?: {
+    onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+  },
+): Promise<void>;
+
+getActionResults(messageId: UUID): ActionResult[];
+
+registerAction(action: Action): void;
+getAllActions(): Action[];
+getFilteredActions(context?: {
+  profile?: ToolProfileId;
+  characterPolicy?: ToolPolicyConfig;
+  channelPolicy?: ToolPolicyConfig;
+  providerPolicy?: ToolPolicyConfig;
+  worldPolicy?: ToolPolicyConfig;
+  roomPolicy?: ToolPolicyConfig;
+}): Action[];
+
+isActionAllowed(
+  actionName: string,
+  context?: { /* same as getFilteredActions */ },
+): { allowed: boolean; reason: string };
+```
+
+**Methods:**
+- `processActions()` - Process actions from a message
+- `getActionResults()` - Get results from processed actions
+- `registerAction()` - Register a new action
+- `getAllActions()` - Get all registered actions
+- `getFilteredActions()` - Get actions filtered by tool policy
+- `isActionAllowed()` - Check if a specific action is allowed
+
+### Evaluation
+
+```typescript
+evaluate(
+  message: Memory,
+  state?: State,
+  didRespond?: boolean,
+  callback?: HandlerCallback,
+  responses?: Memory[],
+): Promise<Evaluator[] | null>;
+
+evaluatePre(message: Memory, state?: State): Promise<PreEvaluatorResult>;
+
+registerEvaluator(evaluator: Evaluator): void;
+```
+
+**Methods:**
+- `evaluate()` - Run post-response evaluators
+- `evaluatePre()` - Run pre-evaluation security gates that can block or rewrite messages
+- `registerEvaluator()` - Register a new evaluator
+
+### Provider Management
+
+```typescript
+registerProvider(provider: Provider): void;
+```
+
+**Methods:**
+- `registerProvider()` - Register a context provider
+
+### State Composition
+
+```typescript
+composeState(
+  message: Memory,
+  includeList?: string[],
+  onlyInclude?: boolean,
+  skipCache?: boolean,
+  trajectoryPhase?: string,
+): Promise<State>;
+```
+
+**Methods:**
+- `composeState()` - Compose state object from message and context
+
+### Model Inference
+
+```typescript
+// Text generation (auto-streams via context)
+useModel(
+  modelType: TextGenerationModelType,
+  params: GenerateTextParams,
+  provider?: string,
+): Promise<string>;
+
+// Generic model inference
+useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
+  modelType: T,
+  params: ModelParamsMap[T],
+  provider?: string,
+): Promise<R>;
+
+generateText(
+  input: string,
+  options?: GenerateTextOptions,
+): Promise<GenerateTextResult>;
+
+registerModel(
+  modelType: ModelTypeName | string,
+  handler: (runtime: IAgentRuntime, params: Record<string, JsonValue | object>) => Promise<JsonValue | object>,
+  provider: string,
+  priority?: number,
+): void;
+
+getModel(
+  modelType: ModelTypeName | string,
+): ((runtime: IAgentRuntime, params: Record<string, JsonValue | object>) => Promise<JsonValue | object>) | undefined;
+
+getModelConfiguration(
+  modelType: ModelTypeName | string,
+): ModelHandler | undefined;
+```
+
+**Methods:**
+- `useModel()` - Use a model for inference with type-safe parameters
+- `generateText()` - Generate text using default model
+- `registerModel()` - Register a model handler
+- `getModel()` - Get registered model handler
+- `getModelConfiguration()` - Get model handler configuration
+
+### Event Management
+
+```typescript
+registerEvent<T extends keyof EventPayloadMap>(
+  event: T,
+  handler: EventHandler<T>,
+): void;
+
+getEvent<T extends keyof EventPayloadMap>(
+  event: T,
+): EventHandler<T>[] | undefined;
+
+emitEvent<T extends keyof EventPayloadMap>(
+  event: T | T[],
+  params: EventPayloadMap[T],
+): Promise<void>;
+```
+
+**Methods:**
+- `registerEvent()` - Register an event handler
+- `getEvent()` - Get registered handlers for an event
+- `emitEvent()` - Emit an event to all handlers
+
+### Task Management
+
+```typescript
+registerTaskWorker(taskHandler: TaskWorker): void;
+getTaskWorker(name: string): TaskWorker | undefined;
+```
+
+**Methods:**
+- `registerTaskWorker()` - Register a task worker definition
+- `getTaskWorker()` - Get a task worker by name
+
+### Dynamic Prompt Execution
+
+```typescript
+dynamicPromptExecFromState(args: {
+  state: State;
+  params: Omit<GenerateTextParams, "prompt"> & {
+    prompt: string | ((ctx: { state: State }) => string);
+  };
+  schema: SchemaRow[];
+  options?: {
+    key?: string;
+    modelSize?: "small" | "large";
+    model?: string;
+    preferredEncapsulation?: "json" | "xml";
+    forceFormat?: "json" | "xml";
+    requiredFields?: string[];
+    contextCheckLevel?: 0 | 1 | 2 | 3;
+    maxRetries?: number;
+    retryBackoff?: number | RetryBackoffConfig;
+    disableCache?: boolean;
+    cacheTTL?: number;
+    onStreamChunk?: (chunk: string, messageId?: string) => void | Promise<void>;
+    onStreamEvent?: (event: StreamEvent, messageId?: string) => void | Promise<void>;
+    abortSignal?: AbortSignal;
+  };
+}): Promise<Record<string, unknown> | null>;
+```
+
+Dynamic prompt execution with state injection, schema-based parsing, and validation-aware streaming.
+
+**Validation Levels:**
+- Level 0 (Trusted): No codes. Maximum speed.
+- Level 1 (Progressive): Per-field codes. Balance of safety + speed.
+- Level 2 (First Checkpoint): Codes at start. Default. Catches ignored prompts.
+- Level 3 (Full): Codes at start AND end. Maximum correctness.
+
+### Memory Management
+
+```typescript
+addEmbeddingToMemory(memory: Memory): Promise<Memory>;
+queueEmbeddingGeneration(
+  memory: Memory,
+  priority?: "high" | "normal" | "low",
+): Promise<void>;
+getAllMemories(): Promise<Memory[]>;
+clearAllAgentMemories(): Promise<void>;
+updateMemory(
+  memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
+): Promise<boolean>;
+```
+
+**Methods:**
+- `addEmbeddingToMemory()` - Add embedding vector to a memory
+- `queueEmbeddingGeneration()` - Queue async embedding generation
+- `getAllMemories()` - Get all memories for the agent
+- `clearAllAgentMemories()` - Clear all agent memories
+- `updateMemory()` - Update an existing memory
+
+### Environment Management
+
+```typescript
+ensureConnections(
+  entities: Entity[],
+  rooms: Room[],
+  source: string,
+  world: World,
+): Promise<void>;
+
+ensureConnection({ /* params */ }): Promise<void>;
+ensureParticipantInRoom(entityId: UUID, roomId: UUID): Promise<void>;
+ensureWorldExists(world: World): Promise<void>;
+ensureRoomExists(room: Room): Promise<void>;
+getEntityById(entityId: UUID): Promise<Entity | null>;
+getRoom(roomId: UUID): Promise<Room | null>;
+createEntity(entity: Entity): Promise<boolean>;
+createRoom(room: Room): Promise<UUID>;
+addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
+getRooms(worldId: UUID): Promise<Room[]>;
+updateWorld(world: World): Promise<void>;
+```
+
+### Run Tracking
+
+```typescript
+createRunId(): UUID;
+startRun(roomId?: UUID): UUID;
+endRun(): void;
+getCurrentRunId(): UUID;
+```
+
+**Methods:**
+- `createRunId()` - Create a new run ID
+- `startRun()` - Start a new run session
+- `endRun()` - End the current run
+- `getCurrentRunId()` - Get the current run ID
+
+### Messaging
+
+```typescript
+registerSendHandler(source: string, handler: SendHandlerFunction): void;
+sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
+```
+
+**Methods:**
+- `registerSendHandler()` - Register a message send handler
+- `sendMessageToTarget()` - Send a message to a target
+
+### Security
+
+```typescript
+redactSecrets(text: string): string;
+```
+
+**Methods:**
+- `redactSecrets()` - Redact secrets from text
+
+### Lifecycle
+
+```typescript
+stop(): Promise<void>;
+getConnection(): Promise<object>;
+registerDatabaseAdapter(adapter: IDatabaseAdapter): void;
+```
+
+**Methods:**
+- `stop()` - Stop the runtime and cleanup
+- `getConnection()` - Get underlying database connection
+- `registerDatabaseAdapter()` - Register a custom database adapter
+
+## Usage Example
+
+```typescript
+import { IAgentRuntime } from "@elizaos/core";
+
+// In an action handler
+export const myAction = {
+  name: "MY_ACTION",
+  handler: async (runtime: IAgentRuntime, message, state) => {
+    // Use the runtime
+    const text = await runtime.useModel(
+      ModelType.TEXT_LARGE,
+      { prompt: "Generate a response" }
+    );
+    
+    // Get a service
+    const twitterService = runtime.getService("twitter");
+    
+    // Check settings
+    const apiKey = runtime.getSetting("OPENAI_API_KEY");
+    
+    // Emit an event
+    await runtime.emitEvent("action:completed", {
+      actionName: "MY_ACTION",
+      success: true
+    });
+    
+    return { success: true, text };
+  }
+};
+```

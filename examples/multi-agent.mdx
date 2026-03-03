@@ -1,0 +1,553 @@
+---
+title: "Multi-Agent System"
+description: "Build systems with multiple collaborating agents"
+---
+
+Create sophisticated multi-agent systems where specialized agents work together to solve complex problems. This example demonstrates agent coordination, communication, and task delegation.
+
+## Overview
+
+Multi-agent systems allow you to build applications where different agents handle different aspects of a problem, collaborate on solutions, and specialize in distinct domains.
+
+**What you'll learn:**
+- Create multiple agents with different specializations
+- Implement inter-agent communication
+- Coordinate tasks between agents
+- Build agent hierarchies
+- Manage shared state
+
+---
+
+## Quick Start
+
+<Steps>
+  <Step title="Install Dependencies">
+    ```bash
+    bun add @elizaos/core @elizaos/plugin-openai @elizaos/plugin-sql uuid
+    ```
+  </Step>
+  
+  <Step title="Create Agent System">
+    Create `multi-agent.ts` with specialized agents
+  </Step>
+  
+  <Step title="Run the System">
+    ```bash
+    export OPENAI_API_KEY="your-key"
+    bun run multi-agent.ts
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   Coordinator Agent                        │
+│                                                             │
+│  - Receives user requests                                   │
+│  - Delegates to specialized agents                          │
+│  - Aggregates responses                                     │
+└─────────────────┬────────────────┬─────────────────┘
+                 │                │                │
+     ┌───────────┼────────────┐   ┌────────┼─────────┐   ┌────────┼─────────┐
+     │  Research Agent  │   │ Writer Agent │   │  Critic Agent │
+     │                  │   │              │   │              │
+     │ Gathers info &   │   │ Creates      │   │ Reviews &    │
+     │ analyzes data    │   │ content      │   │ provides     │
+     │                  │   │              │   │ feedback     │
+     └──────────────────┘   └──────────────┘   └──────────────┘
+```
+
+---
+
+## Complete Example
+
+```typescript multi-agent.ts
+import {
+  AgentRuntime,
+  createMessageMemory,
+  stringToUuid,
+  type Character,
+  type UUID,
+} from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import { v4 as uuidv4 } from "uuid";
+
+// Define specialized agent characters
+const coordinatorCharacter: Character = {
+  name: "Coordinator",
+  bio: "Orchestrates tasks between specialized agents",
+  system: `You are a coordinator agent. Your role is to:
+1. Understand user requests
+2. Determine which specialized agents to involve
+3. Delegate tasks appropriately
+4. Aggregate responses into coherent answers
+
+Available agents:
+- Researcher: Gathers and analyzes information
+- Writer: Creates well-structured content
+- Critic: Reviews and provides constructive feedback`,
+};
+
+const researcherCharacter: Character = {
+  name: "Researcher",
+  bio: "Specialized in information gathering and analysis",
+  system: `You are a research specialist. You:
+- Gather relevant information on topics
+- Analyze data and identify patterns
+- Provide factual, well-sourced insights
+- Think critically about information quality`,
+};
+
+const writerCharacter: Character = {
+  name: "Writer",
+  bio: "Creates clear, engaging content",
+  system: `You are a writing specialist. You:
+- Transform information into clear, engaging content
+- Structure content logically
+- Adapt tone and style to the audience
+- Focus on clarity and readability`,
+};
+
+const criticCharacter: Character = {
+  name: "Critic",
+  bio: "Provides constructive feedback and quality assessment",
+  system: `You are a critic and quality reviewer. You:
+- Evaluate content for accuracy and clarity
+- Identify areas for improvement
+- Provide specific, actionable feedback
+- Ensure high standards are met`,
+};
+
+// Initialize agents
+const plugins = [sqlPlugin, openaiPlugin];
+
+const coordinator = new AgentRuntime({
+  character: coordinatorCharacter,
+  plugins,
+});
+
+const researcher = new AgentRuntime({
+  character: researcherCharacter,
+  plugins,
+});
+
+const writer = new AgentRuntime({
+  character: writerCharacter,
+  plugins,
+});
+
+const critic = new AgentRuntime({
+  character: criticCharacter,
+  plugins,
+});
+
+console.log("🚀 Initializing multi-agent system...");
+
+await Promise.all([
+  coordinator.initialize(),
+  researcher.initialize(),
+  writer.initialize(),
+  critic.initialize(),
+]);
+
+console.log("✅ All agents initialized\n");
+
+// Agent communication helper
+async function sendToAgent(
+  runtime: AgentRuntime,
+  message: string,
+  context?: string
+): Promise<string> {
+  const fullMessage = context
+    ? `Context: ${context}\n\nTask: ${message}`
+    : message;
+
+  const messageMemory = createMessageMemory({
+    id: uuidv4() as UUID,
+    entityId: stringToUuid("system"),
+    roomId: stringToUuid("multi-agent"),
+    content: { text: fullMessage },
+  });
+
+  let response = "";
+  await runtime.messageService!.handleMessage(
+    runtime,
+    messageMemory,
+    async (content) => {
+      if (content?.text) {
+        response += content.text;
+      }
+      return [];
+    }
+  );
+
+  return response;
+}
+
+// Orchestration function
+async function processRequest(userRequest: string) {
+  console.log(`👥 User Request: ${userRequest}\n`);
+  console.log("🧠 Coordinator: Analyzing request...\n");
+
+  // Step 1: Coordinator determines approach
+  const plan = await sendToAgent(
+    coordinator,
+    `A user asks: "${userRequest}"
+    
+    Create a brief plan for how to address this using our specialist agents.
+    Format: Just list the agents to involve and their tasks.`
+  );
+
+  console.log(`📝 Plan:\n${plan}\n`);
+
+  // Step 2: Researcher gathers information
+  console.log("🔍 Researcher: Gathering information...\n");
+  const research = await sendToAgent(
+    researcher,
+    `Research this topic: "${userRequest}"
+    
+    Provide key facts, insights, and relevant information.`
+  );
+
+  console.log(`📊 Research Results:\n${research}\n`);
+
+  // Step 3: Writer creates content
+  console.log("✍️  Writer: Creating content...\n");
+  const content = await sendToAgent(
+    writer,
+    `Create a response to: "${userRequest}"`,
+    `Use this research: ${research}`
+  );
+
+  console.log(`📝 Draft Content:\n${content}\n`);
+
+  // Step 4: Critic reviews
+  console.log("👁️  Critic: Reviewing content...\n");
+  const feedback = await sendToAgent(
+    critic,
+    "Review this content and provide brief feedback.",
+    `Content: ${content}`
+  );
+
+  console.log(`📝 Feedback:\n${feedback}\n`);
+
+  // Step 5: Coordinator finalizes
+  console.log("⚙️  Coordinator: Finalizing response...\n");
+  const finalResponse = await sendToAgent(
+    coordinator,
+    `Synthesize a final response incorporating the feedback.`,
+    `Original content: ${content}\n\nFeedback: ${feedback}`
+  );
+
+  console.log(`✅ Final Response:\n${finalResponse}\n`);
+
+  return finalResponse;
+}
+
+// Example: Process a user request
+const userRequest = "Explain how multi-agent AI systems work";
+await processRequest(userRequest);
+
+// Cleanup
+await Promise.all([
+  coordinator.stop(),
+  researcher.stop(),
+  writer.stop(),
+  critic.stop(),
+]);
+```
+
+---
+
+## Example Output
+
+```
+🚀 Initializing multi-agent system...
+✅ All agents initialized
+
+👥 User Request: Explain how multi-agent AI systems work
+
+🧠 Coordinator: Analyzing request...
+
+📝 Plan:
+1. Researcher: Gather information about multi-agent systems, their architecture, and use cases
+2. Writer: Create a clear, structured explanation based on the research
+3. Critic: Review for accuracy and clarity
+
+🔍 Researcher: Gathering information...
+
+📊 Research Results:
+Multi-agent AI systems consist of multiple autonomous agents that interact to solve 
+complex problems. Key concepts include:
+- Agent autonomy: Each agent operates independently with its own goals
+- Communication protocols: Agents exchange information using defined interfaces
+- Coordination mechanisms: Agents collaborate through negotiation, voting, or hierarchies
+- Specialization: Different agents handle different aspects of problems
+
+Common architectures:
+- Hierarchical: Coordinator delegates to specialized agents
+- Peer-to-peer: Agents collaborate as equals
+- Blackboard: Agents share information via common memory
+
+✍️  Writer: Creating content...
+
+📝 Draft Content:
+Multi-agent AI systems are sophisticated frameworks where multiple AI agents work 
+together to solve complex problems. Think of it like a team of specialists, each with 
+their own expertise.
+
+Each agent in the system operates autonomously, meaning it can make its own decisions 
+while staying aware of the broader goal. They communicate through well-defined 
+protocols, sharing information and coordinating actions...
+
+👁️  Critic: Reviewing content...
+
+📝 Feedback:
+Strengths:
+- Good use of analogy ("team of specialists")
+- Clear explanation of autonomy
+- Logical flow
+
+Suggestions:
+- Add a concrete example for better understanding
+- Mention real-world applications
+- Could be slightly more concise
+
+⚙️  Coordinator: Finalizing response...
+
+✅ Final Response:
+Multi-agent AI systems are frameworks where multiple AI agents work together to solve 
+complex problems - like a team of specialists collaborating on a project.
+
+Each agent operates autonomously with its own expertise while coordinating with others 
+through defined communication protocols. For example, in a customer service system, 
+one agent might handle inquiries, another process refunds, and a coordinator routes 
+requests appropriately.
+
+These systems excel at complex tasks by combining specialized capabilities: research 
+agents gather information, analytical agents process data, and execution agents take 
+action. Real-world applications include autonomous trading systems, smart city 
+management, and collaborative robotics.
+```
+
+---
+
+## Communication Patterns
+
+### Direct Communication
+
+Agents send messages directly to each other:
+
+```typescript
+const response = await sendToAgent(targetAgent, message, context);
+```
+
+### Broadcast
+
+Send message to all agents:
+
+```typescript
+async function broadcast(agents: AgentRuntime[], message: string) {
+  const responses = await Promise.all(
+    agents.map((agent) => sendToAgent(agent, message))
+  );
+  return responses;
+}
+
+const allResponses = await broadcast(
+  [researcher, writer, critic],
+  "What are your thoughts on this topic?"
+);
+```
+
+### Request-Response with Voting
+
+Agents vote on decisions:
+
+```typescript
+async function vote(
+  agents: AgentRuntime[],
+  question: string
+): Promise<Record<string, number>> {
+  const votes: Record<string, number> = {};
+
+  for (const agent of agents) {
+    const response = await sendToAgent(
+      agent,
+      `${question}\n\nRespond with just: A, B, or C`
+    );
+    const vote = response.trim().toUpperCase();
+    votes[vote] = (votes[vote] || 0) + 1;
+  }
+
+  return votes;
+}
+```
+
+### Shared Memory
+
+Use a shared database for state:
+
+```typescript
+// All agents share the same database
+const sharedRoomId = stringToUuid("shared-workspace");
+
+// Agent 1 writes
+await agent1.messageService!.createMemory({
+  roomId: sharedRoomId,
+  content: { text: "Research findings: ...", type: "research" },
+});
+
+// Agent 2 reads
+const memories = await agent2.getMemories({
+  roomId: sharedRoomId,
+  count: 10,
+});
+```
+
+---
+
+## Use Cases
+
+### Content Creation Pipeline
+
+1. **Research Agent**: Gathers information
+2. **Writer Agent**: Creates draft
+3. **Editor Agent**: Refines content
+4. **SEO Agent**: Optimizes for search
+5. **Publisher Agent**: Formats and publishes
+
+### Customer Support System
+
+1. **Triage Agent**: Categorizes inquiries
+2. **Technical Agent**: Handles technical issues
+3. **Billing Agent**: Processes payments
+4. **Escalation Agent**: Routes complex cases
+
+### Development Team
+
+1. **Product Manager Agent**: Defines requirements
+2. **Developer Agent**: Writes code
+3. **QA Agent**: Tests functionality
+4. **DevOps Agent**: Handles deployment
+
+### Trading System
+
+1. **Market Analysis Agent**: Monitors markets
+2. **Risk Assessment Agent**: Evaluates risk
+3. **Execution Agent**: Places trades
+4. **Reporting Agent**: Tracks performance
+
+---
+
+## Advanced Patterns
+
+### Hierarchical Organization
+
+```typescript
+class AgentHierarchy {
+  supervisor: AgentRuntime;
+  workers: AgentRuntime[];
+
+  async delegateTask(task: string) {
+    // Supervisor decides which worker to use
+    const assignment = await sendToAgent(
+      this.supervisor,
+      `Assign this task to a worker: ${task}\nWorkers: ${this.workers.map((w) => w.character.name).join(", ")}`
+    );
+
+    // Execute on assigned worker
+    const worker = this.workers.find((w) =>
+      assignment.includes(w.character.name)
+    );
+
+    if (worker) {
+      return await sendToAgent(worker, task);
+    }
+  }
+}
+```
+
+### Consensus Building
+
+```typescript
+async function reachConsensus(
+  agents: AgentRuntime[],
+  question: string,
+  threshold: number = 0.7
+): Promise<string> {
+  let consensus = false;
+  let rounds = 0;
+  const maxRounds = 5;
+
+  while (!consensus && rounds < maxRounds) {
+    const responses = await Promise.all(
+      agents.map((agent) => sendToAgent(agent, question))
+    );
+
+    // Check for agreement (simplified)
+    const uniqueResponses = new Set(responses);
+    const agreementRatio = 1 / uniqueResponses.size;
+
+    if (agreementRatio >= threshold) {
+      consensus = true;
+      return responses[0];
+    }
+
+    rounds++;
+
+    // Share responses for next round
+    question += `\n\nOther agents said: ${responses.join("; ")}`;
+  }
+
+  return "No consensus reached";
+}
+```
+
+---
+
+## Best Practices
+
+<Tip>
+**Clear Specialization**: Give each agent a well-defined role and expertise area.
+</Tip>
+
+<Tip>
+**Structured Communication**: Use consistent message formats and protocols between agents.
+</Tip>
+
+<Tip>
+**Error Handling**: Implement fallbacks for when agents fail or disagree.
+</Tip>
+
+<Tip>
+**State Management**: Use shared databases or message queues for complex state.
+</Tip>
+
+<Tip>
+**Testing**: Test individual agents before integrating into multi-agent workflows.
+</Tip>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="RAG Chatbot" icon="book" href="/examples/rag-chatbot">
+    Add knowledge retrieval to your agents
+  </Card>
+  <Card title="Custom Character" icon="user" href="/examples/custom-character">
+    Create specialized agent personalities
+  </Card>
+  <Card title="Game NPC" icon="gamepad" href="/examples/game-npc">
+    Build multi-agent game systems
+  </Card>
+  <Card title="Orchestration Guide" icon="network-wired" href="/guides/orchestration">
+    Advanced agent coordination patterns
+  </Card>
+</CardGroup>

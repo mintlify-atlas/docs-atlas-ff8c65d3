@@ -1,0 +1,158 @@
+---
+title: Welcome to elizaOS
+description: The open-source framework for building multi-agent AI applications that are extensible, production-ready, and model-agnostic.
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/hero-light.svg"
+  alt="elizaOS Hero Light"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/hero-dark.svg"
+  alt="elizaOS Hero Dark"
+/>
+
+## What is elizaOS?
+
+elizaOS is an all-in-one, extensible platform for building and deploying AI-powered applications. Whether you're creating sophisticated chatbots, autonomous agents for business process automation, or intelligent game NPCs, elizaOS provides the tools you need to get started quickly and scale effectively.
+
+It combines a modular architecture with a library-first approach, giving you full control over your agents' development, deployment, and management lifecycle.
+
+## Why Choose elizaOS?
+
+<CardGroup cols={2}>
+  <Card title="Model Agnostic" icon="brain" iconType="duotone">
+    Works with all major AI models including OpenAI, Anthropic, Google Gemini, Grok, and local models via Ollama
+  </Card>
+  <Card title="Multi-Agent Architecture" icon="users" iconType="duotone">
+    Designed from the ground up for creating and orchestrating groups of specialized agents
+  </Card>
+  <Card title="Rich Connectivity" icon="plug" iconType="duotone">
+    Out-of-the-box connectors for Discord, Telegram, Twitter, Farcaster, and more
+  </Card>
+  <Card title="Highly Extensible" icon="puzzle-piece" iconType="duotone">
+    Powerful plugin system lets you build custom actions, providers, and evaluators
+  </Card>
+  <Card title="Document Ingestion (RAG)" icon="file-search" iconType="duotone">
+    Ingest documents and allow agents to retrieve information from your data
+  </Card>
+  <Card title="Production Ready" icon="rocket" iconType="duotone">
+    Built for real-world applications with database support, memory management, and deployment options
+  </Card>
+</CardGroup>
+
+## Core Capabilities
+
+### AgentRuntime
+
+The heart of elizaOS is the `AgentRuntime` - a central orchestrator that manages your agent's lifecycle, loads plugins, and coordinates all interactions. It provides a unified interface for actions, providers, and evaluators to work together seamlessly.
+
+### Actions
+
+Actions define specific tasks your agent can perform. Each action includes validation logic to determine when it should trigger, and a handler function to execute the task. elizaOS includes 20+ built-in actions including:
+
+- **SEND_MESSAGE**: Send messages to rooms and channels
+- **UPDATE_ENTITY**: Track and update entity information
+- **SEARCH_CONTACTS**: Find and manage contacts
+- **SETTINGS**: Configure agent behavior dynamically
+- **ROLES**: Manage user permissions and access
+
+### Providers
+
+Providers supply real-time data and context to your agent. They fetch information from external APIs, databases, and services to keep your agent informed and responsive. Use providers to access:
+
+- Current time and location data
+- User profile information
+- External API data
+- Custom business logic
+
+### Evaluators
+
+Evaluators analyze conversations and extract insights to build your agent's memory and contextual awareness. They help your agent:
+
+- Understand user intent
+- Extract facts and relationships
+- Reflect on interactions
+- Improve future responses
+
+## Architecture Overview
+
+elizaOS is organized as a monorepo containing all the packages needed to build, run, and deploy agents:
+
+```
+/
+├── packages/
+│   ├── typescript/     # @elizaos/core - AgentRuntime and bootstrap plugin
+│   ├── python/         # Python implementation
+│   ├── rust/           # Rust implementation (native + WASM)
+│   └── elizaos/        # CLI for project scaffolding
+├── plugins/            # Official plugins (discord, telegram, openai, etc.)
+├── examples/           # Example agents and usage patterns
+└── ...
+```
+
+## Get Started in Minutes
+
+<CardGroup cols={2}>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Set up your development environment with Node.js and bun
+  </Card>
+  <Card
+    title="Quick Start"
+    icon="bolt"
+    href="/quickstart"
+  >
+    Build your first AI agent in under 5 minutes
+  </Card>
+  <Card
+    title="What You Can Build"
+    icon="lightbulb"
+    href="/what-you-can-build"
+  >
+    Explore use cases from chatbots to autonomous agents
+  </Card>
+  <Card
+    title="Core Concepts"
+    icon="book"
+    href="/concepts/overview"
+  >
+    Learn about the fundamental building blocks
+  </Card>
+</CardGroup>
+
+## Community & Support
+
+<CardGroup cols={3}>
+  <Card title="Discord" icon="discord" href="https://discord.gg/ai16z">
+    Join our community
+  </Card>
+  <Card title="GitHub" icon="github" href="https://github.com/elizaos/eliza">
+    View the source code
+  </Card>
+  <Card title="Twitter" icon="twitter" href="https://twitter.com/elizaOS">
+    Follow for updates
+  </Card>
+</CardGroup>
+
+<Note>
+  elizaOS is open source and MIT licensed. We welcome contributions from the community!
+</Note>
+
+## Citation
+
+If you use elizaOS in your research, please cite our paper:
+
+```bibtex
+@article{walters2025eliza,
+  title={Eliza: A Web3 friendly AI Agent Operating System},
+  author={Walters, Shaw and Gao, Sam and Nerd, Shakker and Da, Feng and Williams, Warren and Meng, Ting-Chien and Han, Hunter and He, Frank and Zhang, Allen and Wu, Ming and others},
+  journal={arXiv preprint arXiv:2501.06781},
+  year={2025}
+}
+```

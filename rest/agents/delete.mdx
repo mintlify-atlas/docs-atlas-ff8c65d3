@@ -1,0 +1,272 @@
+---
+title: Delete Agent
+description: Remove an agent from your elizaOS deployment
+api: DELETE /agents/{agentId}
+---
+
+## Endpoint
+
+```
+DELETE /agents/{agentId}
+```
+
+Permanently removes an agent from your elizaOS deployment. This action deletes the agent's configuration, memory, and all associated data.
+
+<Warning>
+This action is irreversible. All agent data, including conversation history and memories, will be permanently deleted.
+</Warning>
+
+## Request
+
+### Path Parameters
+
+<ParamField path="agentId" type="string" required>
+  Unique identifier (UUID) of the agent to delete
+</ParamField>
+
+### Headers
+
+<ParamField header="Authorization" type="string">
+  Bearer token for authentication (if required)
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the deletion was successful
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Confirmation message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Deletion details
+  
+  <ResponseField name="data.agentId" type="string">
+    ID of the deleted agent
+  </ResponseField>
+  
+  <ResponseField name="data.deletedAt" type="number">
+    Unix timestamp when the agent was deleted
+  </ResponseField>
+</ResponseField>
+
+## Examples
+
+### Basic Request
+
+```bash
+curl -X DELETE http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Content-Type: application/json"
+```
+
+### With Authentication
+
+```bash
+curl -X DELETE http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json"
+```
+
+## Response Example
+
+### Success Response
+
+```json
+{
+  "success": true,
+  "message": "Agent deleted successfully",
+  "data": {
+    "agentId": "550e8400-e29b-41d4-a716-446655440000",
+    "deletedAt": 1709683200000
+  }
+}
+```
+
+## Code Examples
+
+### JavaScript/Node.js
+
+```javascript
+const agentId = "550e8400-e29b-41d4-a716-446655440000";
+
+const response = await fetch(`http://localhost:3000/agents/${agentId}`, {
+  method: 'DELETE',
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+const { success, message } = await response.json();
+
+if (success) {
+  console.log(message);
+}
+```
+
+### Python
+
+```python
+import requests
+
+agent_id = "550e8400-e29b-41d4-a716-446655440000"
+
+response = requests.delete(f'http://localhost:3000/agents/{agent_id}')
+data = response.json()
+
+if data['success']:
+    print(data['message'])
+```
+
+### TypeScript
+
+```typescript
+interface DeleteAgentResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    agentId: string;
+    deletedAt: number;
+  };
+}
+
+const agentId = "550e8400-e29b-41d4-a716-446655440000";
+
+const response = await fetch(`http://localhost:3000/agents/${agentId}`, {
+  method: 'DELETE',
+  headers: { 'Content-Type': 'application/json' }
+});
+
+const result: DeleteAgentResponse = await response.json();
+
+if (result.success) {
+  console.log(result.message);
+}
+```
+
+## Error Responses
+
+### 404 Not Found
+
+```json
+{
+  "success": false,
+  "error": "Agent not found"
+}
+```
+
+### 400 Bad Request
+
+```json
+{
+  "success": false,
+  "error": "Invalid agent ID format"
+}
+```
+
+### 409 Conflict
+
+```json
+{
+  "success": false,
+  "error": "Cannot delete a running agent. Stop the agent first."
+}
+```
+
+### 500 Internal Server Error
+
+```json
+{
+  "success": false,
+  "error": "Failed to delete agent"
+}
+```
+
+## Best Practices
+
+### Stop Agent Before Deletion
+
+Always stop a running agent before attempting to delete it:
+
+```javascript
+// Stop the agent first
+await fetch(`http://localhost:3000/agents/${agentId}/stop`, {
+  method: 'POST'
+});
+
+// Then delete it
+await fetch(`http://localhost:3000/agents/${agentId}`, {
+  method: 'DELETE'
+});
+```
+
+### Backup Important Data
+
+Export agent configuration and conversations before deletion if you need to preserve them:
+
+```javascript
+// Get agent details for backup
+const agent = await fetch(`http://localhost:3000/agents/${agentId}`);
+const agentData = await agent.json();
+
+// Save to file or database
+fs.writeFileSync('agent-backup.json', JSON.stringify(agentData));
+
+// Then proceed with deletion
+await fetch(`http://localhost:3000/agents/${agentId}`, {
+  method: 'DELETE'
+});
+```
+
+### Confirm Before Deletion
+
+Implement a confirmation step in your UI:
+
+```javascript
+const deleteAgent = async (agentId: string) => {
+  const confirmed = confirm(
+    'Are you sure you want to delete this agent? This action cannot be undone.'
+  );
+  
+  if (!confirmed) {
+    return;
+  }
+  
+  const response = await fetch(`http://localhost:3000/agents/${agentId}`, {
+    method: 'DELETE'
+  });
+  
+  const result = await response.json();
+  
+  if (result.success) {
+    console.log('Agent deleted successfully');
+  }
+};
+```
+
+## What Gets Deleted
+
+When you delete an agent, the following data is permanently removed:
+
+- Agent character configuration
+- All conversation history
+- Agent memories and embeddings
+- Room memberships
+- Agent settings and secrets
+- Plugin configurations
+- Action history
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="List Agents" icon="list" href="/rest/agents/list">
+    View remaining agents
+  </Card>
+  <Card title="Create Agent" icon="plus" href="/rest/agents/create">
+    Create a new agent
+  </Card>
+  <Card title="Stop Agent" icon="stop" href="/rest/agents/stop">
+    Stop an agent before deletion
+  </Card>
+</CardGroup>

@@ -1,0 +1,659 @@
+---
+title: "Python"
+description: "Build multi-agent AI applications with elizaOS in Python - fully compatible with TypeScript implementation"
+icon: "python"
+---
+
+## Overview
+
+The Python implementation of elizaOS provides a fully compatible runtime for building AI agents in Python. It features strong typing with Pydantic, async/await support, and maintains 100% compatibility with the TypeScript version through Protocol Buffers.
+
+**Package:** `elizaos`
+
+**Version:** 2.0.0a4
+
+**Python Version:** 3.11+
+
+## Key Features
+
+- Strong typing with Pydantic models and type hints
+- Full async/await support with asyncio
+- Protocol Buffers for cross-language compatibility
+- Plugin architecture matching TypeScript implementation
+- Character configuration and memory system
+- Event-driven programming model
+
+## Installation
+
+<Tabs>
+  <Tab title="pip">
+    ```bash
+    pip install elizaos
+    ```
+  </Tab>
+  <Tab title="uv">
+    ```bash
+    uv pip install elizaos
+    ```
+  </Tab>
+  <Tab title="Development">
+    ```bash
+    # From repository
+    git clone https://github.com/elizaos/eliza.git
+    cd eliza
+    pip install -e packages/python
+    ```
+  </Tab>
+</Tabs>
+
+### Required Plugins
+
+You'll need an LLM provider and database adapter:
+
+```bash
+# LLM provider (choose one)
+pip install elizaos-plugin-openai
+pip install elizaos-plugin-anthropic
+pip install elizaos-plugin-ollama
+
+# Database adapter (choose one)
+pip install elizaos-plugin-inmemorydb  # For development
+pip install elizaos-plugin-sql         # For production
+```
+
+## Quick Start
+
+### Basic Agent Setup
+
+```python
+from __future__ import annotations
+import asyncio
+import os
+from uuid6 import uuid7
+
+from elizaos import Character, ChannelType, Content, Memory
+from elizaos.runtime import AgentRuntime
+from elizaos_plugin_openai import get_openai_plugin
+from elizaos_plugin_inmemorydb import plugin as inmemorydb_plugin
+
+async def main() -> None:
+    # Define your agent's character
+    character = Character(
+        name="Eliza",
+        username="eliza",
+        bio="A helpful AI assistant built with elizaOS",
+        system="You are a helpful and concise AI assistant.",
+    )
+    
+    # Create runtime with plugins
+    runtime = AgentRuntime(
+        character=character,
+        plugins=[
+            get_openai_plugin(),
+            inmemorydb_plugin,
+        ],
+    )
+    
+    try:
+        await runtime.initialize()
+        print(f"✓ Agent '{character.name}' initialized")
+        
+        # Your agent logic here
+        
+    finally:
+        await runtime.stop()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Interactive Chat
+
+```python
+import asyncio
+from uuid6 import uuid7
+from elizaos import Character, ChannelType, Content, Memory
+from elizaos.runtime import AgentRuntime
+from elizaos_plugin_openai import get_openai_plugin
+from elizaos_plugin_inmemorydb import plugin as inmemorydb_plugin
+
+async def chat_loop() -> None:
+    character = Character(
+        name="Eliza",
+        username="eliza",
+        bio="A helpful AI assistant.",
+        system="You are helpful and concise.",
+    )
+    
+    runtime = AgentRuntime(
+        character=character,
+        plugins=[get_openai_plugin(), inmemorydb_plugin],
+    )
+    
+    user_id = uuid7()
+    room_id = uuid7()
+    
+    try:
+        await runtime.initialize()
+        print(f"🤖 Chat with {character.name} (type 'quit' to exit)\n")
+        
+        while True:
+            user_input = input("You: ")
+            if not user_input.strip() or user_input.lower() in ("quit", "exit"):
+                break
+            
+            # Create message
+            message = Memory(
+                entity_id=user_id,
+                room_id=room_id,
+                content=Content(
+                    text=user_input,
+                    source="cli",
+                    channel_type=ChannelType.DM.value,
+                ),
+            )
+            
+            # Process message
+            result = await runtime.message_service.handle_message(
+                runtime, message
+            )
+            
+            print(f"\n{character.name}: {result.response_content.text}\n")
+        
+        print("Goodbye! 👋")
+    finally:
+        await runtime.stop()
+
+if __name__ == "__main__":
+    asyncio.run(chat_loop())
+```
+
+## Core Concepts
+
+### Actions
+
+Define custom actions for your agent:
+
+```python
+from elizaos.types.components import Action, ActionResult, HandlerOptions
+from elizaos.types.runtime import IAgentRuntime
+from elizaos.types.memory import Memory
+import re
+
+class WeatherAction(Action):
+    name: str = "GET_WEATHER"
+    description: str = "Get current weather for a location"
+    
+    async def validate(
+        self,
+        runtime: IAgentRuntime,
+        message: Memory,
+        state: dict | None = None
+    ) -> bool:
+        """Check if message mentions weather."""
+        text = message.content.text or ""
+        return bool(re.search(r"weather|temperature|forecast", text, re.I))
+    
+    async def handler(
+        self,
+        runtime: IAgentRuntime,
+        message: Memory,
+        state: dict | None = None,
+        options: HandlerOptions | None = None
+    ) -> ActionResult:
+        """Fetch and return weather information."""
+        location = self._extract_location(message.content.text)
+        weather = await self._fetch_weather(location)
+        
+        return ActionResult(
+            success=True,
+            content=Content(
+                text=f"The weather in {location} is {weather['temp']}°F and {weather['condition']}"
+            )
+        )
+    
+    def _extract_location(self, text: str) -> str:
+        # Your location extraction logic
+        return "San Francisco"
+    
+    async def _fetch_weather(self, location: str) -> dict:
+        # Your weather API call
+        return {"temp": 72, "condition": "sunny"}
+
+# Usage
+weather_action = WeatherAction()
+```
+
+### Providers
+
+Supply contextual information:
+
+```python
+from elizaos.types.components import Provider
+from elizaos.types.runtime import IAgentRuntime
+from elizaos.types.memory import Memory
+from datetime import datetime
+import zoneinfo
+
+class TimeProvider(Provider):
+    name: str = "CURRENT_TIME"
+    
+    async def get(
+        self,
+        runtime: IAgentRuntime,
+        message: Memory,
+        state: dict | None = None
+    ) -> dict:
+        """Provide current time information."""
+        now = datetime.now(zoneinfo.ZoneInfo("UTC"))
+        
+        return {
+            "current_time": now.isoformat(),
+            "time_zone": "UTC",
+            "timestamp": int(now.timestamp() * 1000)
+        }
+
+# Usage
+time_provider = TimeProvider()
+```
+
+### Evaluators
+
+Analyze conversations:
+
+```python
+from elizaos.types.components import Evaluator, PreEvaluatorResult
+from elizaos.types.runtime import IAgentRuntime
+from elizaos.types.memory import Memory
+
+class SentimentEvaluator(Evaluator):
+    name: str = "SENTIMENT_ANALYZER"
+    description: str = "Analyzes sentiment of user messages"
+    
+    async def handler(
+        self,
+        runtime: IAgentRuntime,
+        message: Memory,
+        state: dict | None = None
+    ) -> PreEvaluatorResult:
+        """Analyze message sentiment."""
+        sentiment = self._analyze_sentiment(message.content.text)
+        
+        # Store in state for later use
+        if state is not None:
+            state["sentiment"] = sentiment
+        
+        return PreEvaluatorResult(
+            success=True,
+            data={"sentiment": sentiment}
+        )
+    
+    def _analyze_sentiment(self, text: str | None) -> dict:
+        # Your sentiment analysis logic
+        return {"score": 0.8, "label": "positive"}
+
+# Usage
+sentiment_evaluator = SentimentEvaluator()
+```
+
+### Creating Plugins
+
+Bundle components into reusable plugins:
+
+```python
+from elizaos.types.plugin import Plugin
+
+# Create plugin
+my_plugin = Plugin(
+    name="my-custom-plugin",
+    description="A custom plugin for elizaOS",
+    actions=[weather_action],
+    providers=[time_provider],
+    evaluators=[sentiment_evaluator],
+)
+
+# Use in runtime
+runtime = AgentRuntime(
+    character=character,
+    plugins=[my_plugin, get_openai_plugin(), inmemorydb_plugin],
+)
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# LLM Provider
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Runtime settings
+ALLOW_NO_DATABASE=false
+USE_MULTI_STEP=true
+MAX_MULTISTEP_ITERATIONS=6
+
+# Logging
+LOG_LEVEL=INFO
+```
+
+### Loading from .env
+
+```python
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+# Access environment variables
+api_key = os.getenv("OPENAI_API_KEY")
+```
+
+### Runtime Settings
+
+```python
+from elizaos.runtime import AgentRuntime
+
+runtime = AgentRuntime(
+    character=character,
+    plugins=plugins,
+    
+    # Conversation settings
+    conversation_length=32,
+    
+    # Logging
+    log_level="INFO",
+    
+    # Feature flags
+    disable_basic_capabilities=False,
+    advanced_capabilities=True,
+)
+```
+
+## Type System
+
+Python elizaOS uses Pydantic for strong typing:
+
+```python
+from elizaos import (
+    # Core types
+    UUID,
+    Content,
+    Memory,
+    Character,
+    
+    # Component types
+    Action,
+    Provider,
+    Evaluator,
+    Plugin,
+    
+    # Runtime types
+    IAgentRuntime,
+    AgentRuntime,
+)
+
+from elizaos.types import (
+    # Database types
+    IDatabaseAdapter,
+    
+    # Model types
+    GenerateTextOptions,
+    GenerateTextResult,
+    ModelType,
+)
+```
+
+## Advanced Features
+
+### Async Operations
+
+All runtime operations are async:
+
+```python
+import asyncio
+
+async def process_messages(runtime: AgentRuntime):
+    # Concurrent message processing
+    messages = get_pending_messages()
+    
+    tasks = [
+        runtime.message_service.handle_message(runtime, msg)
+        for msg in messages
+    ]
+    
+    results = await asyncio.gather(*tasks)
+    return results
+```
+
+### Memory Search
+
+```python
+from uuid6 import uuid7
+
+# Search by embedding
+memories = await runtime.database_adapter.search_memories(
+    table_name="messages",
+    room_id=room_id,
+    embedding=await runtime.get_embedding("search query"),
+    match_threshold=0.8,
+    match_count=10,
+)
+
+# Get recent memories
+recent = await runtime.database_adapter.get_memories(
+    table_name="messages",
+    room_id=room_id,
+    count=20,
+)
+```
+
+### Event Handling
+
+```python
+from elizaos.types.events import EventType
+
+# Register event handler
+async def on_message_created(runtime: IAgentRuntime, data: dict):
+    print(f"New message: {data['content']}")
+
+runtime.register_event_handler(
+    EventType.MESSAGE_CREATED,
+    on_message_created
+)
+```
+
+## Testing
+
+### Unit Tests
+
+```python
+import pytest
+from elizaos import Character
+from elizaos.runtime import AgentRuntime
+from elizaos_plugin_inmemorydb import plugin as inmemorydb_plugin
+
+@pytest.mark.asyncio
+async def test_weather_action():
+    character = Character(
+        name="TestAgent",
+        username="test",
+        system="Test system",
+    )
+    
+    runtime = AgentRuntime(
+        character=character,
+        plugins=[my_plugin, inmemorydb_plugin],
+    )
+    
+    try:
+        await runtime.initialize()
+        
+        # Test action
+        result = await weather_action.handler(
+            runtime=runtime,
+            message=test_message,
+        )
+        
+        assert result.success
+        assert "weather" in result.content.text.lower()
+    finally:
+        await runtime.stop()
+```
+
+### Async Fixtures
+
+```python
+import pytest
+import pytest_asyncio
+
+@pytest_asyncio.fixture
+async def runtime():
+    runtime = AgentRuntime(
+        character=test_character,
+        plugins=[inmemorydb_plugin],
+    )
+    
+    await runtime.initialize()
+    yield runtime
+    await runtime.stop()
+
+@pytest.mark.asyncio
+async def test_with_fixture(runtime):
+    # Use runtime fixture
+    result = await runtime.process_message(test_message)
+    assert result.success
+```
+
+## Available Plugins
+
+### LLM Providers
+
+| Plugin | Package | Description |
+|--------|---------|-------------|
+| OpenAI | `elizaos-plugin-openai` | GPT-4, embeddings |
+| Anthropic | `elizaos-plugin-anthropic` | Claude models |
+| Ollama | `elizaos-plugin-ollama` | Local LLMs |
+| Groq | `elizaos-plugin-groq` | Fast inference |
+
+### Database Adapters
+
+| Plugin | Package | Description |
+|--------|---------|-------------|
+| InMemoryDB | `elizaos-plugin-inmemorydb` | Development/testing |
+| SQL | `elizaos-plugin-sql` | PostgreSQL |
+
+### Platform Integrations
+
+| Plugin | Package | Description |
+|--------|---------|-------------|
+| Telegram | `elizaos-plugin-telegram` | Telegram bots |
+| Discord | `elizaos-plugin-discord` | Discord bots |
+
+## Development
+
+### Setting Up Development Environment
+
+```bash
+# Clone repository
+git clone https://github.com/elizaos/eliza.git
+cd eliza
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install in editable mode with dev dependencies
+pip install -e "packages/python[dev]"
+
+# Run tests
+pytest
+
+# Type checking
+mypy elizaos
+
+# Linting
+ruff check elizaos
+```
+
+## Cross-Language Compatibility
+
+The Python implementation maintains full compatibility with TypeScript:
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from elizaos import Character, Content, Memory
+    
+    character = Character(
+        name="Eliza",
+        bio="AI assistant",
+        system="You are helpful.",
+    )
+    
+    memory = Memory(
+        entity_id=user_id,
+        room_id=room_id,
+        content=Content(
+            text="Hello",
+            source="cli",
+        ),
+    )
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import type { Character, Content, Memory } from "@elizaos/core";
+    
+    const character: Character = {
+      name: "Eliza",
+      bio: "AI assistant",
+      system: "You are helpful.",
+    };
+    
+    const memory: Memory = {
+      entity_id: userId,
+      room_id: roomId,
+      content: {
+        text: "Hello",
+        source: "cli",
+      },
+    };
+    ```
+  </Tab>
+</Tabs>
+
+Both implementations use Protocol Buffers for serialization, ensuring identical data formats.
+
+## Examples
+
+Complete examples available in the repository:
+
+- [CLI Chat Agent](https://github.com/elizaos/eliza/tree/main/examples/chat/python)
+- [Telegram Bot](https://github.com/elizaos/eliza/tree/main/examples/telegram/python)
+- [Discord Bot](https://github.com/elizaos/eliza/tree/main/examples/discord/python)
+- [FastAPI Server](https://github.com/elizaos/eliza/tree/main/examples/rest-api/fastapi)
+
+## Resources
+
+- [GitHub Repository](https://github.com/elizaos/eliza)
+- [PyPI Package](https://pypi.org/project/elizaos/)
+- [Python Documentation](https://docs.python.org/3/)
+- [Pydantic Documentation](https://docs.pydantic.dev/)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="TypeScript SDK" icon="code" href="/languages/typescript">
+    Explore the TypeScript implementation
+  </Card>
+  <Card title="Rust SDK" icon="rust" href="/languages/rust">
+    Check out the Rust implementation
+  </Card>
+  <Card title="Creating Plugins" icon="plug" href="/guides/creating-plugins">
+    Build your own plugins
+  </Card>
+  <Card title="Examples" icon="flask" href="/examples/basic-chat">
+    View complete examples
+  </Card>
+</CardGroup>

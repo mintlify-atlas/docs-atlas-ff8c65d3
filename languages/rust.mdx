@@ -1,0 +1,707 @@
+---
+title: "Rust"
+description: "Build high-performance AI agents with elizaOS in Rust - native and WebAssembly support"
+icon: "rust"
+---
+
+## Overview
+
+The Rust implementation of elizaOS provides native performance and WebAssembly compilation support. It maintains 100% type compatibility with the TypeScript implementation through Protocol Buffers and offers both synchronous and asynchronous APIs.
+
+**Crate:** `elizaos`
+
+**Version:** 2.0.0
+
+**Rust Edition:** 2021
+
+**MSRV:** 1.70+
+
+## Key Features
+
+- Native performance with zero-cost abstractions
+- WebAssembly compilation for browser and Node.js
+- Synchronous runtime for ICP and embedded systems
+- Full type compatibility with TypeScript
+- Character loading and validation
+- Plugin system with dependency resolution
+- Memory-safe with Rust's ownership model
+
+## Installation
+
+Add elizaOS to your `Cargo.toml`:
+
+```toml
+[dependencies]
+elizaos = "2.0"
+
+# For async support (native)
+tokio = { version = "1.0", features = ["full"] }
+
+# For serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+```
+
+### Feature Flags
+
+```toml
+[dependencies]
+elizaos = { version = "2.0", features = ["native"] }
+
+# Available features:
+# - native: Native runtime with tokio (default)
+# - wasm: WebAssembly support
+# - bootstrap: Bootstrap plugin functionality
+# - sync: Synchronous runtime for ICP/embedded
+# - icp: Internet Computer Protocol support
+```
+
+## Quick Start
+
+### Basic Agent Setup
+
+```rust
+use elizaos::{
+    AgentRuntime, Character, RuntimeOptions,
+    parse_character, Result,
+};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Define character
+    let character_json = r#"{
+        "name": "Eliza",
+        "username": "eliza",
+        "bio": "A helpful AI assistant built with elizaOS",
+        "system": "You are a helpful and concise AI assistant."
+    }"#;
+    
+    let character = parse_character(character_json)?;
+    
+    // Create runtime
+    let runtime = AgentRuntime::new(RuntimeOptions {
+        character: Some(character),
+        log_level: LogLevel::Info,
+        ..Default::default()
+    }).await?;
+    
+    // Initialize
+    runtime.initialize().await?;
+    
+    println!("✓ Agent initialized: {}", runtime.character.name);
+    
+    Ok(())
+}
+```
+
+### Processing Messages
+
+```rust
+use elizaos::{
+    AgentRuntime, Memory, Content, ChannelType,
+    UUID, uuid::Uuid,
+};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let runtime = create_runtime().await?;
+    
+    let user_id = Uuid::new_v4();
+    let room_id = Uuid::new_v4();
+    
+    // Create message
+    let message = Memory {
+        id: Some(Uuid::new_v4().to_string()),
+        entity_id: user_id.to_string(),
+        room_id: room_id.to_string(),
+        content: Content {
+            text: Some("Hello, Eliza!".to_string()),
+            source: Some("cli".to_string()),
+            channel_type: Some(ChannelType::Dm as i32),
+            ..Default::default()
+        },
+        created_at: Some(now_timestamp()),
+        ..Default::default()
+    };
+    
+    // Process message
+    let result = runtime.handle_message(message).await?;
+    
+    println!("Response: {}", result.content.text.unwrap_or_default());
+    
+    Ok(())
+}
+```
+
+## Core Concepts
+
+### Actions
+
+Define custom actions:
+
+```rust
+use elizaos::{
+    ActionDefinition, ActionHandler, ActionResult,
+    IAgentRuntime, Memory, State,
+};
+use async_trait::async_trait;
+use std::sync::Arc;
+
+pub struct WeatherAction;
+
+#[async_trait]
+impl ActionHandler for WeatherAction {
+    async fn validate(
+        &self,
+        _runtime: Arc<dyn IAgentRuntime>,
+        message: &Memory,
+        _state: Option<&State>,
+    ) -> Result<bool> {
+        // Check if message mentions weather
+        let text = message.content.text.as_ref()
+            .map(|s| s.to_lowercase())
+            .unwrap_or_default();
+        
+        Ok(text.contains("weather") || 
+           text.contains("temperature") ||
+           text.contains("forecast"))
+    }
+    
+    async fn handler(
+        &self,
+        _runtime: Arc<dyn IAgentRuntime>,
+        message: &Memory,
+        _state: Option<&State>,
+        _options: Option<&HandlerOptions>,
+    ) -> Result<ActionResult> {
+        let location = extract_location(&message.content.text);
+        let weather = fetch_weather(&location).await?;
+        
+        Ok(ActionResult {
+            success: true,
+            content: Some(Content {
+                text: Some(format!(
+                    "The weather in {} is {}°F and {}",
+                    location, weather.temp, weather.condition
+                )),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+    }
+}
+
+// Create action definition
+pub fn weather_action() -> ActionDefinition {
+    ActionDefinition {
+        name: "GET_WEATHER".to_string(),
+        description: "Get current weather for a location".to_string(),
+        handler: Arc::new(WeatherAction),
+        ..Default::default()
+    }
+}
+```
+
+### Providers
+
+Supply contextual information:
+
+```rust
+use elizaos::{
+    ProviderDefinition, ProviderHandler,
+    IAgentRuntime, Memory, State,
+};
+use async_trait::async_trait;
+use chrono::Utc;
+use serde_json::{json, Value};
+use std::sync::Arc;
+
+pub struct TimeProvider;
+
+#[async_trait]
+impl ProviderHandler for TimeProvider {
+    async fn get(
+        &self,
+        _runtime: Arc<dyn IAgentRuntime>,
+        _message: &Memory,
+        _state: Option<&State>,
+    ) -> Result<Value> {
+        let now = Utc::now();
+        
+        Ok(json!({
+            "currentTime": now.to_rfc3339(),
+            "timeZone": "UTC",
+            "timestamp": now.timestamp_millis()
+        }))
+    }
+}
+
+// Create provider definition
+pub fn time_provider() -> ProviderDefinition {
+    ProviderDefinition {
+        name: "CURRENT_TIME".to_string(),
+        handler: Arc::new(TimeProvider),
+    }
+}
+```
+
+### Evaluators
+
+Analyze conversations:
+
+```rust
+use elizaos::{
+    EvaluatorDefinition, EvaluatorHandler, PreEvaluatorResult,
+    IAgentRuntime, Memory, State, EvaluatorPhase,
+};
+use async_trait::async_trait;
+use std::sync::Arc;
+
+pub struct SentimentEvaluator;
+
+#[async_trait]
+impl EvaluatorHandler for SentimentEvaluator {
+    async fn handler(
+        &self,
+        _runtime: Arc<dyn IAgentRuntime>,
+        message: &Memory,
+        _state: Option<&State>,
+    ) -> Result<PreEvaluatorResult> {
+        let sentiment = analyze_sentiment(
+            message.content.text.as_deref().unwrap_or("")
+        );
+        
+        Ok(PreEvaluatorResult {
+            success: true,
+            data: Some(json!({
+                "sentiment": sentiment
+            })),
+            ..Default::default()
+        })
+    }
+}
+
+// Create evaluator definition
+pub fn sentiment_evaluator() -> EvaluatorDefinition {
+    EvaluatorDefinition {
+        name: "SENTIMENT_ANALYZER".to_string(),
+        description: "Analyzes sentiment of user messages".to_string(),
+        phase: EvaluatorPhase::AfterResponse,
+        handler: Arc::new(SentimentEvaluator),
+        ..Default::default()
+    }
+}
+```
+
+### Creating Plugins
+
+```rust
+use elizaos::{Plugin, PluginDefinition};
+
+pub fn my_plugin() -> Plugin {
+    Plugin {
+        definition: PluginDefinition {
+            name: "my-custom-plugin".to_string(),
+            description: "A custom plugin for elizaOS".to_string(),
+            ..Default::default()
+        },
+        actions: vec![weather_action()],
+        providers: vec![time_provider()],
+        evaluators: vec![sentiment_evaluator()],
+        services: vec![],
+    }
+}
+
+// Use in runtime
+let runtime = AgentRuntime::new(RuntimeOptions {
+    character: Some(character),
+    plugins: vec![my_plugin()],
+    ..Default::default()
+}).await?;
+```
+
+## WebAssembly Support
+
+### Building for WASM
+
+```bash
+# Install wasm-pack
+cargo install wasm-pack
+
+# Build for web browsers
+wasm-pack build --target web --features wasm
+
+# Build for Node.js
+wasm-pack build --target nodejs --features wasm
+```
+
+### Using in JavaScript
+
+```javascript
+import init, {
+  WasmAgentRuntime,
+  parse_character,
+  validate_character,
+} from "./pkg/elizaos.js";
+
+// Initialize WASM module
+await init();
+
+// Create character
+const characterJson = JSON.stringify({
+  name: "Eliza",
+  bio: "AI assistant",
+  system: "You are helpful.",
+});
+
+// Validate character
+const validation = validate_character(characterJson);
+if (!validation.valid) {
+  console.error("Invalid character:", validation.errors);
+  return;
+}
+
+// Create runtime
+const runtime = await new WasmAgentRuntime(characterJson);
+await runtime.initialize();
+
+console.log(`Agent ID: ${runtime.agent_id}`);
+console.log(`Character: ${runtime.character_name}`);
+
+// Process message
+const result = await runtime.handle_message_json(JSON.stringify({
+  entity_id: "user-123",
+  room_id: "room-456",
+  content: {
+    text: "Hello!",
+    source: "web",
+  },
+}));
+
+console.log("Response:", JSON.parse(result));
+```
+
+## Configuration
+
+### Runtime Options
+
+```rust
+use elizaos::{AgentRuntime, RuntimeOptions, LogLevel};
+
+let runtime = AgentRuntime::new(RuntimeOptions {
+    character: Some(character),
+    
+    // Logging
+    log_level: LogLevel::Debug,
+    
+    // Conversation settings
+    conversation_length: Some(32),
+    
+    // Feature flags
+    disable_basic_capabilities: false,
+    advanced_capabilities: true,
+    
+    // Plugins
+    plugins: vec![my_plugin()],
+    
+    ..Default::default()
+}).await?;
+```
+
+### Environment Variables
+
+```rust
+use std::env;
+
+// Read environment variables
+let api_key = env::var("OPENAI_API_KEY")
+    .expect("OPENAI_API_KEY not set");
+
+let use_multi_step = env::var("USE_MULTI_STEP")
+    .map(|v| v == "true")
+    .unwrap_or(false);
+
+let max_iterations = env::var("MAX_MULTISTEP_ITERATIONS")
+    .ok()
+    .and_then(|v| v.parse::<usize>().ok())
+    .unwrap_or(6);
+```
+
+## Type System
+
+### Core Types
+
+```rust
+use elizaos::{
+    // Primitive types
+    UUID,
+    Content,
+    Memory,
+    
+    // Agent types
+    Character,
+    Agent,
+    AgentStatus,
+    
+    // Component types
+    ActionDefinition,
+    ProviderDefinition,
+    EvaluatorDefinition,
+    Plugin,
+    
+    // Environment types
+    Entity,
+    Room,
+    World,
+    
+    // Model types
+    ModelType,
+    GenerateOptions,
+};
+```
+
+### Serialization
+
+All types serialize to JSON identically to TypeScript:
+
+```rust
+use elizaos::Character;
+use serde_json;
+
+let character = Character {
+    name: "Eliza".to_string(),
+    username: Some("eliza".to_string()),
+    bio: Some("AI assistant".to_string()),
+    ..Default::default()
+};
+
+// Serialize to JSON
+let json = serde_json::to_string(&character)?;
+
+// Deserialize from JSON
+let character: Character = serde_json::from_str(&json)?;
+```
+
+## Advanced Features
+
+### Synchronous Runtime
+
+For ICP and embedded systems:
+
+```rust
+// Enable sync feature in Cargo.toml
+// elizaos = { version = "2.0", features = ["sync"] }
+
+use elizaos::{AgentRuntime, RuntimeOptions};
+
+fn main() -> Result<()> {
+    let runtime = AgentRuntime::new_sync(RuntimeOptions {
+        character: Some(character),
+        ..Default::default()
+    })?;
+    
+    runtime.initialize_sync()?;
+    
+    let result = runtime.handle_message_sync(message)?;
+    
+    Ok(())
+}
+```
+
+### Character Validation
+
+```rust
+use elizaos::{validate_character, parse_character};
+
+let character_json = std::fs::read_to_string("character.json")?;
+
+// Validate before parsing
+let validation = validate_character(&character_json);
+if !validation.valid {
+    eprintln!("Character validation failed:");
+    for error in validation.errors {
+        eprintln!("  - {}", error);
+    }
+    return Err(anyhow::anyhow!("Invalid character"));
+}
+
+// Parse validated character
+let character = parse_character(&character_json)?;
+```
+
+### Error Handling
+
+```rust
+use elizaos::{Error, Result};
+use anyhow::Context;
+
+async fn process_message(runtime: &AgentRuntime) -> Result<()> {
+    let result = runtime.handle_message(message).await
+        .context("Failed to handle message")?;
+    
+    if !result.success {
+        return Err(anyhow::anyhow!("Message processing failed"));
+    }
+    
+    Ok(())
+}
+```
+
+## Testing
+
+### Unit Tests
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use elizaos::{Character, AgentRuntime, RuntimeOptions};
+    
+    #[tokio::test]
+    async fn test_weather_action() {
+        let character = Character {
+            name: "TestAgent".to_string(),
+            ..Default::default()
+        };
+        
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(character),
+            plugins: vec![my_plugin()],
+            ..Default::default()
+        }).await.unwrap();
+        
+        runtime.initialize().await.unwrap();
+        
+        let message = create_test_message("What's the weather?");
+        let result = runtime.handle_message(message).await.unwrap();
+        
+        assert!(result.success);
+        assert!(result.content.unwrap().text.unwrap().contains("weather"));
+    }
+}
+```
+
+### Integration Tests
+
+```rust
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    
+    #[tokio::test]
+    async fn test_full_conversation() {
+        let runtime = create_test_runtime().await.unwrap();
+        
+        let messages = vec![
+            "Hello",
+            "What's the weather?",
+            "Thank you",
+        ];
+        
+        for msg in messages {
+            let message = create_test_message(msg);
+            let result = runtime.handle_message(message).await.unwrap();
+            assert!(result.success);
+        }
+    }
+}
+```
+
+## Build Configurations
+
+### Release Build
+
+```toml
+[profile.release]
+lto = true
+opt-level = "z"  # Optimize for size
+codegen-units = 1
+panic = "abort"
+```
+
+### Cross-Compilation
+
+```bash
+# Install cross-compilation tools
+cargo install cross
+
+# Build for different targets
+cross build --target x86_64-unknown-linux-musl --release
+cross build --target aarch64-unknown-linux-gnu --release
+cross build --target wasm32-unknown-unknown --release
+```
+
+## Cross-Language Compatibility
+
+Rust implementation maintains binary compatibility:
+
+<Tabs>
+  <Tab title="Rust">
+    ```rust
+    use elizaos::{Character, Content};
+    
+    let character = Character {
+        name: "Eliza".to_string(),
+        bio: Some("AI assistant".to_string()),
+        system: Some("You are helpful.".to_string()),
+        ..Default::default()
+    };
+    
+    let content = Content {
+        text: Some("Hello".to_string()),
+        source: Some("cli".to_string()),
+        ..Default::default()
+    };
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    ```typescript
+    import type { Character, Content } from "@elizaos/core";
+    
+    const character: Character = {
+      name: "Eliza",
+      bio: "AI assistant",
+      system: "You are helpful.",
+    };
+    
+    const content: Content = {
+      text: "Hello",
+      source: "cli",
+    };
+    ```
+  </Tab>
+</Tabs>
+
+Both serialize to identical JSON through Protocol Buffers.
+
+## Examples
+
+Complete examples in the repository:
+
+- [Native CLI Agent](https://github.com/elizaos/eliza/tree/main/examples/chat/rust)
+- [WebAssembly Browser](https://github.com/elizaos/eliza/tree/main/examples/wasm)
+- [ICP Canister](https://github.com/elizaos/eliza/tree/main/examples/icp)
+
+## Resources
+
+- [GitHub Repository](https://github.com/elizaos/eliza)
+- [crates.io Package](https://crates.io/crates/elizaos)
+- [Rust Documentation](https://doc.rust-lang.org/)
+- [WASM Pack](https://rustwasm.github.io/wasm-pack/)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="TypeScript SDK" icon="code" href="/languages/typescript">
+    Explore the TypeScript implementation
+  </Card>
+  <Card title="Python SDK" icon="python" href="/languages/python">
+    Check out the Python implementation
+  </Card>
+  <Card title="WebAssembly Guide" icon="cube" href="/guides/wasm-deployment">
+    Deploy to browsers and edge
+  </Card>
+  <Card title="Examples" icon="code-branch" href="/examples/basic-chat">
+    View complete examples
+  </Card>
+</CardGroup>

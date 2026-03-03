@@ -1,0 +1,310 @@
+---
+title: "Plugin Types"
+description: "Type definitions for plugins and extensions in elizaOS"
+---
+
+## Overview
+
+Plugin types define the structure for extending agent functionality in elizaOS. Plugins can provide actions, providers, evaluators, services, routes, models, and more.
+
+## ServiceClass
+
+Type for a service class constructor. This is more flexible than `typeof Service` to allow for service classes with specific serviceType values.
+
+```typescript
+interface ServiceClass {
+  /** The service type identifier */
+  serviceType: string;
+  /** Factory method to create and start the service */
+  start(runtime: IAgentRuntime): Promise<Service>;
+  /** Stop service for a runtime - optional as not all services implement this */
+  stopRuntime?(runtime: IAgentRuntime): Promise<void>;
+  /** Optional static method to register send handlers */
+  registerSendHandlers?(runtime: IAgentRuntime, service: Service): void;
+  /** Constructor (optional runtime parameter) */
+  new (runtime?: IAgentRuntime): Service;
+}
+```
+
+**Properties:**
+- `serviceType` - Unique identifier for the service type
+- `start()` - Factory method to initialize and start the service
+- `stopRuntime?()` - Optional method to stop the service for a specific runtime
+- `registerSendHandlers?()` - Optional method to register message send handlers
+- Constructor - Creates a new service instance
+
+## RouteBodyValue
+
+Supported types for route request body fields.
+
+```typescript
+type RouteBodyValue = JsonValue;
+```
+
+## RouteRequest
+
+Minimal request interface for route handlers.
+
+```typescript
+interface RouteRequest {
+  body?: Record<string, RouteBodyValue>;
+  params?: Record<string, string>;
+  query?: Record<string, string | string[]>;
+  headers?: Record<string, string | string[] | undefined>;
+  method?: string;
+  path?: string;
+  url?: string;
+}
+```
+
+**Properties:**
+- `body?` - Request body data
+- `params?` - URL path parameters
+- `query?` - Query string parameters
+- `headers?` - HTTP headers
+- `method?` - HTTP method (GET, POST, etc.)
+- `path?` - Request path
+- `url?` - Full request URL
+
+## RouteResponse
+
+Minimal response interface for route handlers.
+
+```typescript
+interface RouteResponse {
+  status: (code: number) => RouteResponse;
+  json: (data: unknown) => RouteResponse;
+  send: (data: unknown) => RouteResponse;
+  end: () => RouteResponse;
+  setHeader?: (name: string, value: string | string[]) => RouteResponse;
+  sendFile?: (path: string) => RouteResponse;
+  headersSent?: boolean;
+}
+```
+
+**Methods:**
+- `status()` - Set HTTP status code
+- `json()` - Send JSON response
+- `send()` - Send response data
+- `end()` - End the response
+- `setHeader?()` - Set response header
+- `sendFile?()` - Send a file as response
+
+**Properties:**
+- `headersSent?` - Whether headers have been sent
+
+## Route
+
+Defines an HTTP route with handler and configuration.
+
+```typescript
+type Route = PublicRoute | PrivateRoute;
+
+interface BaseRoute {
+  type: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "STATIC";
+  path: string;
+  filePath?: string;
+  handler?: (
+    req: RouteRequest,
+    res: RouteResponse,
+    runtime: IAgentRuntime,
+  ) => Promise<void>;
+  isMultipart?: boolean;
+  x402?: {
+    price: string;
+    network?: string;
+    payTo?: string;
+    description?: string;
+  };
+}
+
+interface PublicRoute extends BaseRoute {
+  public: true;
+  name: string;
+}
+
+interface PrivateRoute extends BaseRoute {
+  public?: false;
+  name?: string;
+}
+```
+
+**Properties:**
+- `type` - HTTP method type
+- `path` - Route path pattern
+- `filePath?` - Path to static file (for STATIC routes)
+- `handler?()` - Request handler function
+- `isMultipart?` - Whether route accepts multipart/form-data
+- `x402?` - Payment configuration for paid routes
+  - `price` - Price in USDC base units (6 decimals)
+  - `network?` - Override payment network
+  - `payTo?` - Override payment address
+  - `description?` - Payment description
+- `public` - Whether route is publicly accessible (required for public routes)
+- `name` - Route name (required for public routes, optional for private)
+
+## JSONSchemaDefinition
+
+JSON Schema type definition for component validation.
+
+```typescript
+type JSONSchemaDefinition = ProtoJSONSchemaDefinition;
+```
+
+## ComponentTypeDefinition
+
+Component type definition for entity components.
+
+```typescript
+interface ComponentTypeDefinition {
+  schema: JSONSchemaDefinition;
+  validator?: (data: Record<string, RouteBodyValue>) => boolean;
+}
+```
+
+**Properties:**
+- `schema` - JSON schema for validation
+- `validator?()` - Optional custom validation function
+
+## PluginEvents
+
+Event handlers provided by a plugin.
+
+```typescript
+type PluginEvents = {
+  [K in keyof EventPayloadMap]?: EventHandler<K>[];
+};
+```
+
+## Plugin
+
+Main plugin interface for extending agent functionality.
+
+```typescript
+interface Plugin {
+  name: string;
+  description: string;
+  
+  init?: (
+    config: Record<string, string>,
+    runtime: IAgentRuntime,
+  ) => Promise<void>;
+  
+  config?: Record<string, string | number | boolean | null>;
+  services?: ServiceClass[];
+  componentTypes?: ComponentTypeDefinition[];
+  actions?: Action[];
+  providers?: Provider[];
+  evaluators?: Evaluator[];
+  adapter?: IDatabaseAdapter;
+  models?: {
+    [K in keyof ModelParamsMap]?: (
+      runtime: IAgentRuntime,
+      params: ModelParamsMap[K],
+    ) => Promise<PluginModelResult<K>>;
+  };
+  events?: PluginEvents;
+  routes?: Route[];
+  tests?: TestSuite[];
+  dependencies?: string[];
+  testDependencies?: string[];
+  priority?: number;
+  schema?: Record<string, JsonValue | object>;
+}
+```
+
+**Properties:**
+- `name` - Plugin name (unique identifier)
+- `description` - Human-readable description
+- `init?()` - Optional initialization function
+- `config?` - Plugin configuration values
+- `services?` - Service classes to register
+- `componentTypes?` - Entity component definitions
+- `actions?` - Actions the plugin provides
+- `providers?` - Context providers
+- `evaluators?` - Message evaluators
+- `adapter?` - Custom database adapter
+- `models?` - Model handlers for inference
+- `events?` - Event handlers
+- `routes?` - HTTP routes
+- `tests?` - Test suites
+- `dependencies?` - Required plugin dependencies
+- `testDependencies?` - Dependencies for testing only
+- `priority?` - Plugin loading priority
+- `schema?` - Database schema definitions
+
+## ProjectAgent
+
+Defines an agent within a project configuration.
+
+```typescript
+interface ProjectAgent {
+  character: Character;
+  init?: (runtime: IAgentRuntime) => Promise<void>;
+  plugins?: Plugin[];
+  tests?: TestSuite | TestSuite[];
+}
+```
+
+**Properties:**
+- `character` - The character definition for the agent
+- `init?()` - Optional initialization function
+- `plugins?` - Plugins to load for this agent
+- `tests?` - Test suites for the agent
+
+## Project
+
+Defines a project with multiple agents.
+
+```typescript
+interface Project {
+  agents: ProjectAgent[];
+}
+```
+
+**Properties:**
+- `agents` - Array of agent configurations
+
+## Usage Example
+
+```typescript
+import { Plugin, Route } from "@elizaos/core";
+
+const myPlugin: Plugin = {
+  name: "my-plugin",
+  description: "Example plugin",
+  
+  init: async (config, runtime) => {
+    console.log("Plugin initialized");
+  },
+  
+  config: {
+    apiKey: "required",
+    enabled: true
+  },
+  
+  actions: [
+    {
+      name: "EXAMPLE_ACTION",
+      description: "An example action",
+      validate: async () => true,
+      handler: async (runtime, message, state) => {
+        return { success: true };
+      },
+      examples: []
+    }
+  ],
+  
+  routes: [
+    {
+      type: "GET",
+      path: "/health",
+      public: true,
+      name: "health-check",
+      handler: async (req, res) => {
+        res.json({ status: "ok" });
+      }
+    }
+  ]
+};
+```

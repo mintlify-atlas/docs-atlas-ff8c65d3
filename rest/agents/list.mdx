@@ -1,0 +1,228 @@
+---
+title: List Agents
+description: Retrieve all agents in your elizaOS deployment
+api: GET /agents
+---
+
+## Endpoint
+
+```
+GET /agents
+```
+
+Retrieves a list of all agents configured in your elizaOS deployment, including their status, configuration, and metadata.
+
+## Request
+
+### Query Parameters
+
+<ParamField query="status" type="string">
+  Filter agents by status: `active` or `inactive`
+</ParamField>
+
+<ParamField query="offset" type="number" default="0">
+  Number of agents to skip for pagination
+</ParamField>
+
+<ParamField query="limit" type="number" default="50">
+  Maximum number of agents to return
+</ParamField>
+
+### Headers
+
+<ParamField header="Authorization" type="string">
+  Bearer token for authentication (if required)
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="array" required>
+  Array of agent objects
+  
+  <ResponseField name="data[].agentId" type="string" required>
+    Unique identifier for the agent (UUID)
+  </ResponseField>
+  
+  <ResponseField name="data[].name" type="string" required>
+    Name of the agent's character
+  </ResponseField>
+  
+  <ResponseField name="data[].status" type="string" required>
+    Current status: `active` or `inactive`
+  </ResponseField>
+  
+  <ResponseField name="data[].bio" type="string">
+    Short biography or description of the agent
+  </ResponseField>
+  
+  <ResponseField name="data[].enabled" type="boolean">
+    Whether the agent is enabled
+  </ResponseField>
+  
+  <ResponseField name="data[].createdAt" type="number">
+    Unix timestamp when the agent was created
+  </ResponseField>
+  
+  <ResponseField name="data[].updatedAt" type="number">
+    Unix timestamp when the agent was last updated
+  </ResponseField>
+</ResponseField>
+
+## Examples
+
+### Basic Request
+
+```bash
+curl -X GET http://localhost:3000/agents \
+  -H "Content-Type: application/json"
+```
+
+### With Authentication
+
+```bash
+curl -X GET http://localhost:3000/agents \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json"
+```
+
+### Filter by Status
+
+```bash
+curl -X GET "http://localhost:3000/agents?status=active" \
+  -H "Content-Type: application/json"
+```
+
+### With Pagination
+
+```bash
+curl -X GET "http://localhost:3000/agents?offset=0&limit=10" \
+  -H "Content-Type: application/json"
+```
+
+## Response Example
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "agentId": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "Alice",
+      "status": "active",
+      "bio": "A helpful AI assistant specializing in customer support",
+      "enabled": true,
+      "createdAt": 1709510400000,
+      "updatedAt": 1709596800000
+    },
+    {
+      "agentId": "660e8400-e29b-41d4-a716-446655440001",
+      "name": "Bob",
+      "status": "inactive",
+      "bio": "A technical expert focused on software development",
+      "enabled": false,
+      "createdAt": 1709424000000,
+      "updatedAt": 1709510400000
+    }
+  ]
+}
+```
+
+## Code Examples
+
+### JavaScript/Node.js
+
+```javascript
+const response = await fetch('http://localhost:3000/agents', {
+  method: 'GET',
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+const { success, data } = await response.json();
+
+if (success) {
+  console.log(`Found ${data.length} agents`);
+  data.forEach(agent => {
+    console.log(`- ${agent.name} (${agent.status})`);
+  });
+}
+```
+
+### Python
+
+```python
+import requests
+
+response = requests.get('http://localhost:3000/agents')
+data = response.json()
+
+if data['success']:
+    print(f"Found {len(data['data'])} agents")
+    for agent in data['data']:
+        print(f"- {agent['name']} ({agent['status']})")
+```
+
+### TypeScript
+
+```typescript
+interface Agent {
+  agentId: string;
+  name: string;
+  status: 'active' | 'inactive';
+  bio?: string;
+  enabled?: boolean;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+interface ListAgentsResponse {
+  success: boolean;
+  data: Agent[];
+}
+
+const response = await fetch('http://localhost:3000/agents');
+const { success, data }: ListAgentsResponse = await response.json();
+
+if (success) {
+  console.log(`Found ${data.length} agents`);
+}
+```
+
+## Error Responses
+
+### 503 Service Unavailable
+
+```json
+{
+  "success": false,
+  "error": "Agent service not available"
+}
+```
+
+### 500 Internal Server Error
+
+```json
+{
+  "success": false,
+  "error": "Failed to retrieve agents"
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create Agent" icon="plus" href="/rest/agents/create">
+    Create a new agent
+  </Card>
+  <Card title="Get Agent" icon="info" href="/rest/agents/get">
+    Get details about a specific agent
+  </Card>
+  <Card title="Start Agent" icon="play" href="/rest/agents/start">
+    Start an agent's runtime
+  </Card>
+</CardGroup>

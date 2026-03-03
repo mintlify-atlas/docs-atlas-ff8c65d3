@@ -1,0 +1,390 @@
+---
+title: Installation
+description: Set up your development environment for building AI agents with elizaOS
+---
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed on your system:
+
+<CardGroup cols={2}>
+  <Card title="Node.js 23+" icon="node-js">
+    Required for running elizaOS projects
+  </Card>
+  <Card title="bun" icon="package">
+    Fast JavaScript runtime and package manager
+  </Card>
+</CardGroup>
+
+<Warning>
+  **Windows Users**: WSL 2 (Windows Subsystem for Linux) is required. elizaOS runs on Linux and macOS natively. [Install WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) before proceeding.
+</Warning>
+
+## Step 1: Install Node.js
+
+elizaOS requires Node.js version 23.3.0 or higher.
+
+<Steps>
+  <Step title="Check if Node.js is installed">
+    Open your terminal and run:
+    
+    ```bash
+    node --version
+    ```
+    
+    If you see `v23.3.0` or higher, you're good to go. Otherwise, continue to the next step.
+  </Step>
+
+  <Step title="Install Node.js">
+    Download and install Node.js from the official website:
+    
+    <Tabs>
+      <Tab title="macOS">
+        Using Homebrew:
+        ```bash
+        brew install node@23
+        ```
+        
+        Or download the installer from [nodejs.org](https://nodejs.org/)
+      </Tab>
+      
+      <Tab title="Linux">
+        Using nvm (recommended):
+        ```bash
+        # Install nvm
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+        
+        # Install Node.js 23
+        nvm install 23
+        nvm use 23
+        ```
+      </Tab>
+      
+      <Tab title="Windows (WSL 2)">
+        Inside your WSL 2 terminal:
+        ```bash
+        # Install nvm
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+        
+        # Install Node.js 23
+        nvm install 23
+        nvm use 23
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Verify installation">
+    ```bash
+    node --version
+    npm --version
+    ```
+    
+    You should see version numbers for both commands.
+  </Step>
+</Steps>
+
+## Step 2: Install bun
+
+bun is a fast JavaScript runtime and package manager that elizaOS uses for development and package management.
+
+<Steps>
+  <Step title="Install bun">
+    Run the official installation script:
+    
+    <Tabs>
+      <Tab title="macOS / Linux">
+        ```bash
+        curl -fsSL https://bun.sh/install | bash
+        ```
+      </Tab>
+      
+      <Tab title="Windows (WSL 2)">
+        ```bash
+        curl -fsSL https://bun.sh/install | bash
+        ```
+      </Tab>
+    </Tabs>
+    
+    The script will install bun and add it to your PATH.
+  </Step>
+
+  <Step title="Restart your terminal">
+    Close and reopen your terminal to ensure bun is available in your PATH.
+  </Step>
+
+  <Step title="Verify installation">
+    ```bash
+    bun --version
+    ```
+    
+    You should see a version number (elizaOS uses bun 1.3.5 or higher).
+  </Step>
+</Steps>
+
+## Step 3: Install elizaOS
+
+You have two options for getting started with elizaOS:
+
+<Tabs>
+  <Tab title="Option 1: Clone the Repository">
+    Clone the entire elizaOS repository to access all packages, plugins, and examples:
+    
+    <Steps>
+      <Step title="Clone the repo">
+        ```bash
+        git clone https://github.com/elizaos/eliza.git
+        cd eliza
+        ```
+      </Step>
+      
+      <Step title="Install dependencies">
+        ```bash
+        bun install
+        ```
+        
+        This will install all dependencies for the monorepo.
+      </Step>
+      
+      <Step title="Build the project">
+        ```bash
+        bun run build
+        ```
+        
+        This compiles all TypeScript packages and prepares them for use.
+      </Step>
+    </Steps>
+    
+    <Tip>
+      This option is recommended if you want to:
+      - Explore example projects
+      - Contribute to elizaOS
+      - Access all plugins and packages
+      - Run the development environment
+    </Tip>
+  </Tab>
+  
+  <Tab title="Option 2: Use elizaOS CLI">
+    Create a standalone project using the elizaOS CLI:
+    
+    <Steps>
+      <Step title="Run the CLI">
+        You can use npx or bunx without installing globally:
+        
+        ```bash
+        bunx elizaos create
+        ```
+        
+        Or with npm:
+        ```bash
+        npx elizaos create
+        ```
+      </Step>
+      
+      <Step title="Follow the prompts">
+        The CLI will ask you to:
+        - Name your project
+        - Choose a language (TypeScript, Python, or Rust)
+        - Select an example template (chat, rest-api, react, etc.)
+      </Step>
+      
+      <Step title="Navigate to your project">
+        ```bash
+        cd your-project-name
+        bun install
+        ```
+      </Step>
+    </Steps>
+    
+    <Tip>
+      This option is recommended if you want to:
+      - Start a new project from scratch
+      - Use a specific template
+      - Keep your project separate from the elizaOS source
+    </Tip>
+  </Tab>
+  
+  <Tab title="Option 3: Add to Existing Project">
+    Add elizaOS as a library to your existing Node.js project:
+    
+    <Steps>
+      <Step title="Install @elizaos/core">
+        ```bash
+        bun add @elizaos/core
+        ```
+        
+        Or with npm:
+        ```bash
+        npm install @elizaos/core
+        ```
+      </Step>
+      
+      <Step title="Install plugins as needed">
+        ```bash
+        # For database support
+        bun add @elizaos/plugin-sql
+        
+        # For OpenAI models
+        bun add @elizaos/plugin-openai
+        
+        # For Discord integration
+        bun add @elizaos/plugin-discord
+        ```
+      </Step>
+    </Steps>
+    
+    <Tip>
+      This option is recommended if you want to:
+      - Integrate elizaOS into an existing application
+      - Use only specific components
+      - Have full control over dependencies
+    </Tip>
+  </Tab>
+</Tabs>
+
+## Step 4: Configure Environment Variables
+
+Create a `.env` file in your project root to configure API keys and settings:
+
+<Steps>
+  <Step title="Copy the example file">
+    If you cloned the repository:
+    
+    ```bash
+    cp .env.example .env
+    ```
+  </Step>
+  
+  <Step title="Add your API keys">
+    Open `.env` in your text editor and add at least one AI model provider:
+    
+    ```env .env
+    # OpenAI (recommended for getting started)
+    OPENAI_API_KEY=sk-your-key-here
+    
+    # Or use other providers:
+    # ANTHROPIC_API_KEY=your-key-here
+    # GOOGLE_GENERATIVE_AI_API_KEY=your-key-here
+    
+    # Or run locally with Ollama (no API key needed)
+    # OLLAMA_API_ENDPOINT=http://localhost:11434
+    ```
+    
+    <Warning>
+      Never commit your `.env` file to version control. Add it to `.gitignore`!
+    </Warning>
+  </Step>
+  
+  <Step title="Optional: Configure database">
+    By default, elizaOS uses an in-memory database. For persistence, configure PostgreSQL:
+    
+    ```env .env
+    # PostgreSQL connection URL
+    POSTGRES_URL=postgresql://user:password@localhost:5432/eliza
+    
+    # Or use PGLite for a lightweight option
+    PGLITE_DATA_DIR=./.eliza/.elizadb
+    ```
+  </Step>
+</Steps>
+
+## Step 5: Verify Installation
+
+Let's verify everything is working correctly:
+
+<CodeGroup>
+```bash Clone Repository
+# From the eliza directory
+bun run build
+echo "Installation complete!"
+```
+
+```bash CLI Project
+# From your project directory
+cd your-project-name
+bun install
+echo "Installation complete!"
+```
+
+```bash Library Install
+# From your project directory
+node -e "console.log(require('@elizaos/core'))"
+echo "Installation complete!"
+```
+</CodeGroup>
+
+If you see no errors, congratulations! You're ready to build your first agent.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Quick Start"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Build your first AI agent in 5 minutes
+  </Card>
+  <Card
+    title="What You Can Build"
+    icon="lightbulb"
+    href="/what-you-can-build"
+  >
+    Explore what's possible with elizaOS
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Node.js version mismatch">
+    If you see an error about Node.js version:
+    
+    ```bash
+    # Use nvm to switch versions
+    nvm use 23
+    
+    # Or set it as default
+    nvm alias default 23
+    ```
+  </Accordion>
+  
+  <Accordion title="bun command not found">
+    If `bun` is not recognized after installation:
+    
+    1. Restart your terminal
+    2. Check if bun is in your PATH:
+       ```bash
+       echo $PATH | grep .bun
+       ```
+    3. Manually add to your shell config:
+       ```bash
+       # For bash (~/.bashrc) or zsh (~/.zshrc)
+       export PATH="$HOME/.bun/bin:$PATH"
+       ```
+  </Accordion>
+  
+  <Accordion title="WSL 2 installation issues">
+    For Windows users having WSL 2 issues:
+    
+    1. Ensure WSL 2 is installed: `wsl --version`
+    2. Update WSL: `wsl --update`
+    3. Set WSL 2 as default: `wsl --set-default-version 2`
+    4. Install Ubuntu: `wsl --install -d Ubuntu`
+  </Accordion>
+  
+  <Accordion title="Build errors">
+    If you encounter build errors:
+    
+    ```bash
+    # Clean and rebuild
+    bun run clean
+    bun install
+    bun run build
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  Need more help? Join our [Discord community](https://discord.gg/ai16z) or check the [GitHub issues](https://github.com/elizaos/eliza/issues).
+</Note>

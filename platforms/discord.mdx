@@ -1,0 +1,365 @@
+---
+title: Discord Integration
+description: Connect your elizaOS agent to Discord for interactive bot experiences
+---
+
+## Overview
+
+The Discord integration allows your elizaOS agent to interact with users on Discord servers through a bot. Your agent can send messages, react to content, manage channels, create polls, handle moderation tasks, and more.
+
+## Prerequisites
+
+Before setting up Discord integration, you need:
+
+- A Discord account
+- A Discord server where you have admin permissions
+- A Discord application and bot token from the [Discord Developer Portal](https://discord.com/developers/applications)
+
+## Setup
+
+<Steps>
+
+### Create a Discord Application
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Click "New Application" and give it a name
+3. Navigate to the "Bot" section in the left sidebar
+4. Click "Add Bot" and confirm
+5. Under the bot's username, click "Reset Token" to generate a new token
+6. Copy the token - you'll need it for configuration
+
+### Configure Bot Permissions
+
+1. In the Developer Portal, go to the "OAuth2" > "URL Generator" section
+2. Select the following scopes:
+   - `bot`
+   - `applications.commands` (for slash commands)
+3. Select the bot permissions your agent needs:
+   - `Send Messages`
+   - `Read Message History`
+   - `Add Reactions`
+   - `Manage Messages` (for editing/deleting)
+   - Additional permissions based on your use case
+4. Copy the generated URL and use it to invite the bot to your server
+
+### Set Environment Variables
+
+Add the following to your `.env` file:
+
+```bash
+# Required
+DISCORD_BOT_TOKEN=your_bot_token_here
+
+# Optional - for enhanced functionality
+DISCORD_APPLICATION_ID=your_application_id_here
+```
+
+### Add the Discord Plugin
+
+In your character configuration file, add the Discord plugin:
+
+```json
+{
+  "name": "YourAgent",
+  "plugins": [
+    "@elizaos/plugin-discord"
+  ],
+  "settings": {
+    "channels": {
+      "discord": {
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+</Steps>
+
+## Configuration
+
+### Environment Variables
+
+The Discord integration supports the following environment variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DISCORD_BOT_TOKEN` | Yes | Your Discord bot token from the Developer Portal |
+| `DISCORD_APPLICATION_ID` | No | Your application ID for enhanced features |
+
+**Alternative names supported:**
+- `DISCORD_TOKEN` → `DISCORD_BOT_TOKEN`
+- `DISCORD_API_TOKEN` → `DISCORD_BOT_TOKEN`
+
+### Character Settings
+
+You can configure Discord-specific behavior in your character file:
+
+```json
+{
+  "settings": {
+    "channels": {
+      "discord": {
+        "enabled": true,
+        "actions": {
+          "reactions": true,
+          "stickers": true,
+          "polls": true,
+          "messages": true,
+          "threads": true,
+          "pins": true,
+          "search": true,
+          "permissions": true,
+          "memberInfo": true,
+          "roleInfo": true,
+          "channelInfo": true,
+          "voiceStatus": true,
+          "events": true,
+          "emojiUploads": true,
+          "stickerUploads": true,
+          "roles": false,
+          "channels": false,
+          "moderation": false,
+          "presence": false
+        }
+      }
+    }
+  }
+}
+```
+
+<Note>
+By default, `roles`, `channels`, `moderation`, and `presence` actions are disabled for safety. Enable them explicitly if needed.
+</Note>
+
+## Features
+
+### Message Management
+
+Your agent can send, edit, and delete messages:
+
+```typescript
+// Send a message
+{
+  "action": "sendMessage",
+  "to": "channel:123456789",
+  "content": "Hello from elizaOS!"
+}
+
+// Edit a message
+{
+  "action": "editMessage",
+  "channelId": "123456789",
+  "messageId": "987654321",
+  "content": "Updated content"
+}
+
+// Send with media attachment
+{
+  "action": "sendMessage",
+  "to": "channel:123456789",
+  "content": "Check this out!",
+  "mediaUrl": "https://example.com/image.png"
+}
+```
+
+### Reactions
+
+Add reactions to messages for engagement:
+
+```typescript
+{
+  "action": "react",
+  "channelId": "123456789",
+  "messageId": "987654321",
+  "emoji": "✅"
+}
+```
+
+### Polls
+
+Create interactive polls:
+
+```typescript
+{
+  "action": "poll",
+  "to": "channel:123456789",
+  "question": "What should we work on next?",
+  "answers": ["Feature A", "Feature B", "Bug Fixes"],
+  "allowMultiselect": false,
+  "durationHours": 24
+}
+```
+
+### Thread Management
+
+Create and participate in threads:
+
+```typescript
+// Create a thread
+{
+  "action": "threadCreate",
+  "channelId": "123456789",
+  "name": "Discussion Topic",
+  "messageId": "987654321"
+}
+
+// Reply in a thread
+{
+  "action": "threadReply",
+  "channelId": "123456789",
+  "content": "Replying in thread"
+}
+```
+
+### Custom Emojis and Stickers
+
+Upload custom emojis and stickers to your server:
+
+```typescript
+// Upload emoji (requires guildId and <= 256KB PNG/JPG/GIF)
+{
+  "action": "emojiUpload",
+  "guildId": "999999999",
+  "name": "custom_emoji",
+  "mediaUrl": "file:///path/to/emoji.png"
+}
+
+// Upload sticker (requires <= 512KB PNG/APNG/Lottie)
+{
+  "action": "stickerUpload",
+  "guildId": "999999999",
+  "name": "custom_sticker",
+  "description": "A cool sticker",
+  "tags": "😎",
+  "mediaUrl": "file:///path/to/sticker.png"
+}
+```
+
+### Search and Information
+
+Search messages and get information about members, roles, and channels:
+
+```typescript
+// Search messages
+{
+  "action": "searchMessages",
+  "guildId": "999999999",
+  "content": "release notes",
+  "limit": 10
+}
+
+// Get member info
+{
+  "action": "memberInfo",
+  "guildId": "999999999",
+  "userId": "123456789"
+}
+
+// List channels
+{
+  "action": "channelList",
+  "guildId": "999999999"
+}
+```
+
+### Bot Presence
+
+Set your bot's status and activity (requires `presence` action enabled):
+
+```typescript
+// Set playing status
+{
+  "action": "setPresence",
+  "activityType": "playing",
+  "activityName": "with AI",
+  "status": "online"
+}
+
+// Set custom status
+{
+  "action": "setPresence",
+  "activityType": "custom",
+  "activityState": "Processing requests"
+}
+```
+
+### Moderation (Advanced)
+
+Perform moderation actions (requires `moderation` action enabled and proper permissions):
+
+```typescript
+// Timeout a user
+{
+  "action": "timeout",
+  "guildId": "999999999",
+  "userId": "123456789",
+  "durationMinutes": 10
+}
+```
+
+## Discord Writing Style
+
+When configuring your agent's personality for Discord, follow these best practices:
+
+**Do:**
+- Keep messages short and conversational (1-3 sentences)
+- Use emojis for tone and emphasis
+- Send multiple quick replies instead of walls of text
+- Match the energy of the conversation
+- Use **bold** for emphasis, `code` for technical terms
+
+**Don't:**
+- Use markdown tables (they render poorly in Discord)
+- Use `## Headers` in casual chat
+- Write multi-paragraph essays
+- Over-explain simple things
+
+## Plugin Auto-Loading
+
+If you set `DISCORD_BOT_TOKEN` in your environment, the Discord plugin will automatically load. You can explicitly control this in your character's `plugins` array:
+
+```typescript
+// From character.ts:239
+const plugins = [
+  ...(env.DISCORD_API_TOKEN?.trim() ? ["@elizaos/plugin-discord"] : [])
+];
+```
+
+## Troubleshooting
+
+### Bot doesn't respond
+
+1. Verify your `DISCORD_BOT_TOKEN` is correct
+2. Check that the bot has been invited to your server
+3. Ensure the bot has proper permissions in the channel
+4. Check the bot's role position in the server hierarchy
+
+### Permission errors
+
+1. Review the bot's permissions in Server Settings > Roles
+2. Check channel-specific permission overrides
+3. Ensure the bot's role is high enough for the actions it needs to perform
+
+### Message not sending
+
+1. Verify the channel ID is correct
+2. Check that the bot can view and send messages in that channel
+3. Ensure your message content isn't empty
+4. Check for rate limiting in the console logs
+
+## Best Practices
+
+1. **Start with minimal permissions** - Only enable the actions your agent needs
+2. **Test in a private server first** - Create a test server before deploying to production
+3. **Monitor rate limits** - Discord has strict rate limiting; avoid spamming
+4. **Handle errors gracefully** - Implement proper error handling for failed actions
+5. **Respect user privacy** - Don't log sensitive user data or messages
+6. **Use threads for long conversations** - Keep channels organized
+
+## Related Resources
+
+- [Discord Developer Documentation](https://discord.com/developers/docs)
+- [Discord.js Guide](https://discordjs.guide/)
+- [elizaOS Plugin Architecture](/plugins/architecture)
+- [Create a Plugin Guide](/guides/create-a-plugin)

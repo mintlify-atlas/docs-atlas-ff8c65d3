@@ -1,0 +1,535 @@
+---
+title: "AgentRuntime"
+description: "Core runtime class for managing agent execution, plugins, and state"
+---
+
+## Overview
+
+The `AgentRuntime` class is the central orchestrator for elizaOS agents. It manages plugins, actions, evaluators, providers, services, and the agent's execution lifecycle.
+
+## Constructor
+
+```typescript
+new AgentRuntime(options?: {
+  conversationLength?: number;
+  agentId?: UUID;
+  character?: Character;
+  plugins?: Plugin[];
+  fetch?: typeof fetch;
+  adapter?: IDatabaseAdapter;
+  settings?: RuntimeSettings;
+  allAvailablePlugins?: Plugin[];
+  logLevel?: "trace" | "debug" | "info" | "warn" | "error" | "fatal";
+  disableBasicCapabilities?: boolean;
+  advancedCapabilities?: boolean;
+  actionPlanning?: boolean;
+  llmMode?: "DEFAULT" | "SMALL" | "LARGE";
+  checkShouldRespond?: boolean;
+  enableAutonomy?: boolean;
+  sandboxMode?: boolean;
+  sandboxTokenManager?: SandboxTokenManager;
+  sandboxAuditHandler?: (event: SandboxFetchAuditEvent) => void;
+})
+```
+
+<ParamField path="conversationLength" type="number">
+  Number of messages to retain in conversation context (default: 100)
+</ParamField>
+
+<ParamField path="agentId" type="UUID">
+  Unique identifier for the agent. If not provided, generated from character name
+</ParamField>
+
+<ParamField path="character" type="Character">
+  Character configuration defining the agent's personality and behavior. If not provided, an anonymous character is created
+</ParamField>
+
+<ParamField path="plugins" type="Plugin[]">
+  Array of plugins to register with the agent
+</ParamField>
+
+<ParamField path="adapter" type="IDatabaseAdapter">
+  Database adapter for persistence. Required for production use
+</ParamField>
+
+<ParamField path="logLevel" type="string" default="error">
+  Logging verbosity: "trace", "debug", "info", "warn", "error", or "fatal"
+</ParamField>
+
+<ParamField path="actionPlanning" type="boolean" default="true">
+  Enable multi-action execution. When false, agent executes only one action per response (performance optimization for games)
+</ParamField>
+
+<ParamField path="llmMode" type="string" default="DEFAULT">
+  Override model selection: "DEFAULT" (use specified model), "SMALL" (force TEXT_SMALL), or "LARGE" (force TEXT_LARGE)
+</ParamField>
+
+<ParamField path="checkShouldRespond" type="boolean" default="true">
+  Enable shouldRespond evaluation. When false, agent always responds (ChatGPT mode)
+</ParamField>
+
+<ParamField path="enableAutonomy" type="boolean">
+  Enable autonomous operation with continuous thinking loop
+</ParamField>
+
+<ParamField path="sandboxMode" type="boolean">
+  Enable secure secret isolation. Secrets become opaque tokens in the runtime
+</ParamField>
+
+## Core Properties
+
+<ResponseField name="agentId" type="UUID">
+  The unique identifier for this agent instance
+</ResponseField>
+
+<ResponseField name="character" type="Character">
+  The character configuration defining agent behavior
+</ResponseField>
+
+<ResponseField name="actions" type="Action[]">
+  Registered actions the agent can perform
+</ResponseField>
+
+<ResponseField name="evaluators" type="Evaluator[]">
+  Registered evaluators for message assessment
+</ResponseField>
+
+<ResponseField name="providers" type="Provider[]">
+  Registered providers for external data/services
+</ResponseField>
+
+<ResponseField name="plugins" type="Plugin[]">
+  Registered plugins extending agent functionality
+</ResponseField>
+
+<ResponseField name="adapter" type="IDatabaseAdapter">
+  Database adapter for persistence operations
+</ResponseField>
+
+## Initialization
+
+### initialize
+
+Initialize the runtime, register plugins, and set up the database.
+
+```typescript
+await runtime.initialize(options?: {
+  skipMigrations?: boolean;
+  allowNoDatabase?: boolean;
+}): Promise<void>
+```
+
+<ParamField path="skipMigrations" type="boolean">
+  Skip database migrations (for serverless mode)
+</ParamField>
+
+<ParamField path="allowNoDatabase" type="boolean">
+  Allow running without a persistent database (uses in-memory adapter)
+</ParamField>
+
+**Example:**
+
+```typescript
+import { AgentRuntime } from "@elizaos/core";
+import { sqlitePlugin } from "@elizaos/plugin-sql";
+
+const runtime = new AgentRuntime({
+  character: myCharacter,
+  plugins: [sqlitePlugin],
+  logLevel: "info"
+});
+
+await runtime.initialize();
+```
+
+## Plugin Management
+
+### registerPlugin
+
+Register a plugin with the runtime.
+
+```typescript
+await runtime.registerPlugin(plugin: Plugin): Promise<void>
+```
+
+<ParamField path="plugin" type="Plugin" required>
+  Plugin to register
+</ParamField>
+
+**Example:**
+
+```typescript
+import { customPlugin } from "./my-plugin";
+
+await runtime.registerPlugin(customPlugin);
+```
+
+## Action Management
+
+### registerAction
+
+Register an action that the agent can perform.
+
+```typescript
+runtime.registerAction(action: Action): void
+```
+
+<ParamField path="action" type="Action" required>
+  Action definition with handler and validation
+</ParamField>
+
+### getAllActions
+
+Get all registered actions.
+
+```typescript
+runtime.getAllActions(): Action[]
+```
+
+### getFilteredActions
+
+Get actions filtered by tool policy.
+
+```typescript
+runtime.getFilteredActions(context?: {
+  profile?: ToolProfileId;
+  characterPolicy?: ToolPolicyConfig;
+  channelPolicy?: ToolPolicyConfig;
+  providerPolicy?: ToolPolicyConfig;
+  worldPolicy?: ToolPolicyConfig;
+  roomPolicy?: ToolPolicyConfig;
+}): Action[]
+```
+
+**Returns:** Array of actions allowed by the policy context.
+
+## Evaluator Management
+
+### registerEvaluator
+
+Register an evaluator for message assessment.
+
+```typescript
+runtime.registerEvaluator(evaluator: Evaluator): void
+```
+
+<ParamField path="evaluator" type="Evaluator" required>
+  Evaluator definition with phase (pre/post) and handler
+</ParamField>
+
+### evaluatePre
+
+Run all pre-phase evaluators on an incoming message. Pre-evaluators can block or rewrite messages before processing.
+
+```typescript
+await runtime.evaluatePre(
+  message: Memory,
+  state?: State
+): Promise<PreEvaluatorResult>
+```
+
+<ResponseField name="blocked" type="boolean">
+  If true, the message is blocked from processing
+</ResponseField>
+
+<ResponseField name="rewrittenText" type="string">
+  Optional replacement text (sanitized/redacted version)
+</ResponseField>
+
+<ResponseField name="reason" type="string">
+  Reason for blocking/rewriting
+</ResponseField>
+
+## Provider Management
+
+### registerProvider
+
+Register a provider for external data/services.
+
+```typescript
+runtime.registerProvider(provider: Provider): void
+```
+
+<ParamField path="provider" type="Provider" required>
+  Provider definition with data retrieval function
+</ParamField>
+
+## State Management
+
+### composeState
+
+Compose state from providers for a given message.
+
+```typescript
+await runtime.composeState(
+  message: Memory,
+  includeList?: string[] | null,
+  onlyInclude?: boolean,
+  skipCache?: boolean,
+  trajectoryPhase?: string
+): Promise<State>
+```
+
+<ParamField path="message" type="Memory" required>
+  Message to compose state for
+</ParamField>
+
+<ParamField path="includeList" type="string[]">
+  Provider names to include
+</ParamField>
+
+<ParamField path="onlyInclude" type="boolean">
+  If true, only include providers in includeList
+</ParamField>
+
+<ParamField path="skipCache" type="boolean">
+  Skip state cache lookup
+</ParamField>
+
+**Returns:** Composed state with provider data, values, and text.
+
+## Settings Management
+
+### getSetting
+
+Get a setting value from character configuration or environment.
+
+```typescript
+runtime.getSetting(key: string): string | boolean | number | null
+```
+
+<ParamField path="key" type="string" required>
+  Setting key to retrieve
+</ParamField>
+
+**Returns:** Setting value or null if not found.
+
+**Example:**
+
+```typescript
+const apiKey = runtime.getSetting("OPENAI_API_KEY");
+const enableFeature = runtime.getSetting("ENABLE_ADVANCED_MODE");
+```
+
+### setSetting
+
+Set a setting value in the character configuration.
+
+```typescript
+runtime.setSetting(
+  key: string,
+  value: string | boolean | null,
+  secret?: boolean
+): void
+```
+
+<ParamField path="key" type="string" required>
+  Setting key
+</ParamField>
+
+<ParamField path="value" type="string | boolean | null" required>
+  Setting value
+</ParamField>
+
+<ParamField path="secret" type="boolean">
+  If true, store in secrets instead of settings
+</ParamField>
+
+## Service Management
+
+### getService
+
+Get a registered service by name.
+
+```typescript
+runtime.getService<T extends Service>(serviceName: ServiceTypeName): T | null
+```
+
+<ParamField path="serviceName" type="ServiceTypeName" required>
+  Service name to retrieve
+</ParamField>
+
+**Returns:** Service instance or null if not found.
+
+**Example:**
+
+```typescript
+const messageService = runtime.getService<IMessageService>("message");
+if (messageService) {
+  await messageService.sendMessage(content);
+}
+```
+
+## Memory Operations
+
+### createMemory
+
+Create a new memory in the database.
+
+```typescript
+await runtime.createMemory(
+  memory: Memory,
+  tableName: string
+): Promise<void>
+```
+
+<ParamField path="memory" type="Memory" required>
+  Memory object to store
+</ParamField>
+
+<ParamField path="tableName" type="string" required>
+  Table name ("messages", "documents", etc.)
+</ParamField>
+
+### getMemories
+
+Retrieve memories from the database.
+
+```typescript
+await runtime.getMemories(params: {
+  roomId: UUID;
+  count?: number;
+  unique?: boolean;
+  tableName: string;
+  agentId?: UUID;
+  start?: number;
+  end?: number;
+}): Promise<Memory[]>
+```
+
+### searchMemories
+
+Search memories by embedding similarity.
+
+```typescript
+await runtime.searchMemories(params: {
+  tableName: string;
+  roomId: UUID;
+  embedding: number[];
+  match_threshold?: number;
+  match_count?: number;
+  unique?: boolean;
+}): Promise<Memory[]>
+```
+
+## Entity Management
+
+### getEntityById
+
+Get an entity by its ID.
+
+```typescript
+await runtime.getEntityById(entityId: UUID): Promise<Entity | null>
+```
+
+### createEntity
+
+Create a new entity.
+
+```typescript
+await runtime.createEntity(entity: Entity): Promise<boolean>
+```
+
+### ensureConnection
+
+Ensure all necessary entities, rooms, and relationships exist for a connection.
+
+```typescript
+await runtime.ensureConnection(
+  entityId: UUID,
+  roomId: UUID,
+  userName?: string,
+  name?: string,
+  source?: string,
+  worldId?: UUID,
+  channelId?: string,
+  messageServerId?: string,
+  type?: ChannelType,
+  worldName?: string,
+  metadata?: Record<string, unknown>
+): Promise<void>
+```
+
+## Run Management
+
+### startRun
+
+Start a new run for tracking prompts and model calls.
+
+```typescript
+const runId = runtime.startRun(roomId?: UUID): UUID
+```
+
+### endRun
+
+End the current run.
+
+```typescript
+runtime.endRun(): void
+```
+
+### getCurrentRunId
+
+Get the current run ID (creates one if needed).
+
+```typescript
+runtime.getCurrentRunId(): UUID
+```
+
+## Lifecycle
+
+### stop
+
+Stop the runtime and clean up resources.
+
+```typescript
+await runtime.stop(): Promise<void>
+```
+
+## Example Usage
+
+```typescript
+import { AgentRuntime } from "@elizaos/core";
+import { sqlitePlugin } from "@elizaos/plugin-sql";
+
+// Create and initialize runtime
+const runtime = new AgentRuntime({
+  character: {
+    name: "MyAgent",
+    bio: ["A helpful assistant"],
+    templates: {},
+    messageExamples: [],
+    postExamples: [],
+    topics: [],
+    adjectives: [],
+    knowledge: [],
+    plugins: [],
+    secrets: {}
+  },
+  plugins: [sqlitePlugin],
+  logLevel: "info",
+  actionPlanning: true
+});
+
+await runtime.initialize();
+
+// Register custom action
+runtime.registerAction({
+  name: "GREET_USER",
+  description: "Greet the user warmly",
+  handler: async (runtime, message, state) => {
+    return {
+      success: true,
+      text: `Hello, ${message.content.text}!`
+    };
+  },
+  validate: async () => true
+});
+
+// Use the runtime
+const state = await runtime.composeState(message);
+const apiKey = runtime.getSetting("OPENAI_API_KEY");
+
+// Clean up
+await runtime.stop();
+```

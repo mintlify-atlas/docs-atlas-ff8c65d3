@@ -1,0 +1,444 @@
+---
+title: "Evaluators"
+description: "Evaluator system for assessing and filtering agent messages"
+---
+
+## Overview
+
+Evaluators assess agent messages at different points in the pipeline. They can run before (pre) or after (post) message processing, enabling middleware-style filtering, security checks, trust scoring, and relationship extraction.
+
+## Evaluator Type
+
+```typescript
+interface Evaluator {
+  name: string;
+  description: string;
+  handler: Handler;
+  validate: Validator;
+  similes?: string[];
+  examples: EvaluationExample[];
+  alwaysRun?: boolean;
+  phase?: EvaluatorPhase;
+}
+```
+
+<ResponseField name="name" type="string" required>
+  Evaluator name
+</ResponseField>
+
+<ResponseField name="description" type="string" required>
+  Detailed description of what this evaluator does
+</ResponseField>
+
+<ResponseField name="handler" type="Handler" required>
+  Function that performs the evaluation
+</ResponseField>
+
+<ResponseField name="validate" type="Validator" required>
+  Function that validates if evaluator should run
+</ResponseField>
+
+<ResponseField name="similes" type="string[]">
+  Alternative names for the evaluator
+</ResponseField>
+
+<ResponseField name="examples" type="EvaluationExample[]" required>
+  Example conversations showing evaluator behavior
+</ResponseField>
+
+<ResponseField name="alwaysRun" type="boolean">
+  Whether to always run this evaluator
+</ResponseField>
+
+<ResponseField name="phase" type="EvaluatorPhase">
+  When to run: "pre" (before processing) or "post" (after actions). Default: "post"
+</ResponseField>
+
+## EvaluatorPhase Type
+
+```typescript
+type EvaluatorPhase = "pre" | "post";
+```
+
+<ResponseField name="pre" type="string">
+  Run **before** message is saved to memory and before action processing. Pre-evaluators act as middleware and can block or rewrite messages.
+</ResponseField>
+
+<ResponseField name="post" type="string">
+  Run **after** agent has responded and actions have executed. Original evaluator behavior for reflection, trust scoring, etc.
+</ResponseField>
+
+## Pre-Evaluators
+
+Pre-evaluators run before message processing and can:
+- Block messages from being processed
+- Rewrite/sanitize message content
+- Perform security checks
+- Rate limiting
+- Content filtering
+
+### PreEvaluatorResult Type
+
+```typescript
+interface PreEvaluatorResult {
+  blocked: boolean;
+  rewrittenText?: string;
+  reason?: string;
+}
+```
+
+<ResponseField name="blocked" type="boolean" required>
+  If true, the message is blocked - no memory, no response, no actions
+</ResponseField>
+
+<ResponseField name="rewrittenText" type="string">
+  Optional replacement text (sanitized/redacted version of input)
+</ResponseField>
+
+<ResponseField name="reason" type="string">
+  Human-readable reason for blocking/rewriting (logged)
+</ResponseField>
+
+### Example: Pre-Evaluator
+
+```typescript
+import { Evaluator } from "@elizaos/core";
+
+export const spamFilter: Evaluator = {
+  name: "SPAM_FILTER",
+  description: "Block spam and malicious messages",
+  phase: "pre",
+  alwaysRun: true,
+  
+  handler: async (runtime, message, state) => {
+    const text = message.content.text || "";
+    
+    // Check for spam patterns
+    const spamPatterns = [
+      /buy now/i,
+      /click here/i,
+      /limited time/i
+    ];
+    
+    const isSpam = spamPatterns.some(pattern => pattern.test(text));
+    
+    if (isSpam) {
+      return {
+        blocked: true,
+        reason: "Message flagged as spam"
+      };
+    }
+    
+    return { blocked: false };
+  },
+  
+  validate: async () => true,
+  examples: []
+};
+```
+
+## Post-Evaluators
+
+Post-evaluators run after message processing and can:
+- Score conversation quality
+- Extract relationships
+- Update trust scores
+- Generate reflections
+- Log analytics
+
+### Example: Post-Evaluator
+
+```typescript
+import { Evaluator } from "@elizaos/core";
+
+export const trustEvaluator: Evaluator = {
+  name: "TRUST_SCORE",
+  description: "Evaluate and update user trust score",
+  phase: "post", // Default
+  
+  handler: async (runtime, message, state) => {
+    const userId = message.entityId;
+    
+    // Analyze conversation quality
+    const score = await calculateTrustScore(message, state);
+    
+    // Update trust score in database
+    await runtime.updateEntityMetadata(userId, {
+      trustScore: score
+    });
+    
+    runtime.logger.debug(
+      { userId, score },
+      "Updated trust score"
+    );
+  },
+  
+  validate: async (runtime, message) => {
+    // Only run for user messages
+    return message.entityId !== runtime.agentId;
+  },
+  
+  examples: [
+    {
+      messages: [
+        { name: "user", content: { text: "Thank you for your help!" } },
+        { name: "agent", content: { text: "You're welcome!" } }
+      ]
+    }
+  ]
+};
+```
+
+## Registering Evaluators
+
+### registerEvaluator
+
+```typescript
+runtime.registerEvaluator(evaluator: Evaluator): void
+```
+
+Register an evaluator with the runtime.
+
+**Example:**
+
+```typescript
+import { spamFilter, trustEvaluator } from "./evaluators";
+
+// Register pre-evaluator (middleware)
+runtime.registerEvaluator(spamFilter);
+
+// Register post-evaluator (reflection)
+runtime.registerEvaluator(trustEvaluator);
+```
+
+## Running Evaluators
+
+### evaluatePre
+
+Run all pre-phase evaluators on an incoming message.
+
+```typescript
+const result = await runtime.evaluatePre(
+  message: Memory,
+  state?: State
+): Promise<PreEvaluatorResult>
+```
+
+<ParamField path="message" type="Memory" required>
+  Incoming message to evaluate
+</ParamField>
+
+<ParamField path="state" type="State">
+  Current state (optional)
+</ParamField>
+
+**Returns:** Merged result from all pre-evaluators. If any evaluator blocks, the message is blocked.
+
+**Example:**
+
+```typescript
+const preResult = await runtime.evaluatePre(incomingMessage, state);
+
+if (preResult.blocked) {
+  console.log("Message blocked:", preResult.reason);
+  return; // Don't process message
+}
+
+if (preResult.rewrittenText) {
+  // Use rewritten text instead of original
+  incomingMessage.content.text = preResult.rewrittenText;
+}
+
+// Continue processing...
+```
+
+## Example: Content Moderation
+
+```typescript
+import { Evaluator } from "@elizaos/core";
+
+export const contentModerator: Evaluator = {
+  name: "CONTENT_MODERATOR",
+  description: "Filter inappropriate content and PII",
+  phase: "pre",
+  alwaysRun: true,
+  
+  handler: async (runtime, message) => {
+    const text = message.content.text || "";
+    
+    // Check for prohibited content
+    const hasProhibitedContent = checkForProhibitedContent(text);
+    if (hasProhibitedContent) {
+      return {
+        blocked: true,
+        reason: "Message contains prohibited content"
+      };
+    }
+    
+    // Redact PII (emails, phone numbers, SSNs)
+    const redactedText = redactPII(text);
+    if (redactedText !== text) {
+      return {
+        blocked: false,
+        rewrittenText: redactedText,
+        reason: "PII redacted from message"
+      };
+    }
+    
+    return { blocked: false };
+  },
+  
+  validate: async () => true,
+  examples: []
+};
+
+function redactPII(text: string): string {
+  // Redact emails
+  text = text.replace(
+    /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
+    "[EMAIL]"
+  );
+  
+  // Redact phone numbers
+  text = text.replace(
+    /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g,
+    "[PHONE]"
+  );
+  
+  return text;
+}
+```
+
+## Example: Rate Limiting
+
+```typescript
+import { Evaluator } from "@elizaos/core";
+
+const rateLimits = new Map<string, number[]>();
+
+export const rateLimiter: Evaluator = {
+  name: "RATE_LIMITER",
+  description: "Limit message rate per user",
+  phase: "pre",
+  alwaysRun: true,
+  
+  handler: async (runtime, message) => {
+    const userId = message.entityId;
+    const now = Date.now();
+    const windowMs = 60000; // 1 minute
+    const maxMessages = 10;
+    
+    // Get user's recent messages
+    const timestamps = rateLimits.get(userId) || [];
+    
+    // Remove old timestamps outside window
+    const recentTimestamps = timestamps.filter(
+      ts => now - ts < windowMs
+    );
+    
+    if (recentTimestamps.length >= maxMessages) {
+      return {
+        blocked: true,
+        reason: `Rate limit exceeded: ${maxMessages} messages per minute`
+      };
+    }
+    
+    // Add current timestamp
+    recentTimestamps.push(now);
+    rateLimits.set(userId, recentTimestamps);
+    
+    return { blocked: false };
+  },
+  
+  validate: async () => true,
+  examples: []
+};
+```
+
+## Example: Sentiment Analysis
+
+```typescript
+import { Evaluator } from "@elizaos/core";
+
+export const sentimentAnalyzer: Evaluator = {
+  name: "SENTIMENT_ANALYZER",
+  description: "Analyze conversation sentiment",
+  phase: "post",
+  
+  handler: async (runtime, message, state) => {
+    const text = message.content.text || "";
+    
+    // Analyze sentiment
+    const sentiment = await analyzeSentiment(text);
+    
+    // Store in entity metadata
+    await runtime.updateEntityMetadata(message.entityId, {
+      lastSentiment: sentiment.score,
+      sentimentLabel: sentiment.label // positive, negative, neutral
+    });
+    
+    // Log for analytics
+    runtime.logger.info(
+      { 
+        userId: message.entityId,
+        sentiment: sentiment.label,
+        score: sentiment.score
+      },
+      "Sentiment analyzed"
+    );
+  },
+  
+  validate: async () => true,
+  
+  examples: [
+    {
+      messages: [
+        { name: "user", content: { text: "I love this!" } },
+        { name: "agent", content: { text: "Glad you're enjoying it!" } }
+      ]
+    }
+  ]
+};
+```
+
+## Validator Function
+
+The `validate` function determines if an evaluator should run:
+
+```typescript
+type Validator = (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State
+) => Promise<boolean>
+```
+
+**Example:**
+
+```typescript
+validate: async (runtime, message, state) => {
+  // Only run for messages in specific rooms
+  const allowedRooms = ["room-1", "room-2"];
+  return allowedRooms.includes(message.roomId);
+}
+```
+
+## Best Practices
+
+### Pre-Evaluators
+- Keep fast and lightweight (they run on every message)
+- Use for security, filtering, and sanitization
+- Return `blocked: true` sparingly (UX impact)
+- Always provide clear `reason` for blocking
+
+### Post-Evaluators
+- Can be more computationally expensive
+- Use for analytics, learning, relationship tracking
+- Don't throw errors (wrap in try/catch)
+- Log useful information for debugging
+
+### Both
+- Test thoroughly (they affect all conversations)
+- Document expected behavior
+- Consider performance impact
+- Handle edge cases gracefully

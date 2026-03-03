@@ -1,0 +1,685 @@
+---
+title: "Approval Service"
+description: "Task-based approval workflows with timeout handling and role-based permissions"
+---
+
+## Overview
+
+The `ApprovalService` provides a robust abstraction for managing approval workflows in elizaOS. It uses the task system to create interactive approval requests with multiple options, timeout handling, and role-based permissions.
+
+### Key Features
+
+- **Multi-option approvals**: Support for binary, multi-choice, and complex approval flows
+- **Timeout handling**: Automatic timeout with configurable defaults
+- **Role-based permissions**: Restrict approvals to specific roles
+- **Async and sync modes**: Wait for approval or use callbacks
+- **Standard patterns**: Pre-built options for common approval types
+- **Approval chains**: Support for sequential approval workflows
+
+## Service Lifecycle
+
+### Starting the Service
+
+```typescript
+import { ApprovalService } from "@elizaos/core";
+
+const service = await ApprovalService.start(runtime);
+```
+
+### Stopping the Service
+
+```typescript
+await service.stop();
+```
+
+On stop, all pending approvals are automatically resolved as cancelled.
+
+## Standard Approval Options
+
+The service provides pre-built option sets for common patterns:
+
+```typescript
+import { STANDARD_OPTIONS } from "@elizaos/core";
+
+// Confirm/Cancel
+STANDARD_OPTIONS.CONFIRM
+// [{ name: "confirm", description: "Confirm and proceed" },
+//  { name: "cancel", description: "Cancel the operation", isCancel: true }]
+
+// Approve/Deny
+STANDARD_OPTIONS.APPROVE_DENY
+// [{ name: "approve", description: "Approve the request" },
+//  { name: "deny", description: "Deny the request", isCancel: true }]
+
+// Yes/No
+STANDARD_OPTIONS.YES_NO
+// [{ name: "yes", description: "Yes" },
+//  { name: "no", description: "No", isCancel: true }]
+
+// Allow Once/Always/Deny
+STANDARD_OPTIONS.ALLOW_ONCE_ALWAYS_DENY
+// [{ name: "allow-once", description: "Allow this one time" },
+//  { name: "allow-always", description: "Always allow this" },
+//  { name: "deny", description: "Deny the request", isCancel: true }]
+```
+
+## Creating Approval Requests
+
+### requestApproval (Synchronous)
+
+Create an approval request and wait for a decision.
+
+```typescript
+async requestApproval(request: ApprovalRequest): Promise<ApprovalResult>
+```
+
+<ParamField path="request" type="ApprovalRequest" required>
+  The approval request configuration
+
+  <Expandable title="ApprovalRequest">
+    <ParamField path="name" type="string" required>
+      Unique name for this approval type (used for task worker registration)
+    </ParamField>
+
+    <ParamField path="description" type="string" required>
+      Human-readable description of what's being approved
+    </ParamField>
+
+    <ParamField path="roomId" type="UUID" required>
+      Room where the approval request is made
+    </ParamField>
+
+    <ParamField path="entityId" type="UUID">
+      Optional entity ID associated with the request
+    </ParamField>
+
+    <ParamField path="options" type="ApprovalOption[]" required>
+      Available options for the approval
+    </ParamField>
+
+    <ParamField path="tags" type="string[]">
+      Additional tags for the task (automatically includes "AWAITING_CHOICE" and "APPROVAL")
+    </ParamField>
+
+    <ParamField path="timeoutMs" type="number">
+      Timeout in milliseconds (default: no timeout)
+    </ParamField>
+
+    <ParamField path="timeoutDefault" type="string">
+      Default option if timeout occurs (must match an option name)
+    </ParamField>
+
+    <ParamField path="metadata" type="Record<string, unknown>">
+      Arbitrary metadata to attach to the task
+    </ParamField>
+
+    <ParamField path="onSelect" type="(option: string, task: Task, runtime: IAgentRuntime) => Promise<void>">
+      Callback when an option is selected
+    </ParamField>
+
+    <ParamField path="onTimeout" type="(task: Task, runtime: IAgentRuntime) => Promise<void>">
+      Callback when approval times out
+    </ParamField>
+
+    <ParamField path="allowedRoles" type="string[]" default="['OWNER', 'ADMIN']">
+      Roles allowed to make this approval
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="result" type="ApprovalResult">
+  The approval result
+
+  <Expandable title="ApprovalResult">
+    <ResponseField name="selectedOption" type="string">
+      The option that was selected
+    </ResponseField>
+
+    <ResponseField name="success" type="boolean">
+      Whether the approval was successful (not cancelled/timed out)
+    </ResponseField>
+
+    <ResponseField name="timedOut" type="boolean">
+      Whether the approval timed out
+    </ResponseField>
+
+    <ResponseField name="cancelled" type="boolean">
+      Whether the approval was cancelled
+    </ResponseField>
+
+    <ResponseField name="taskId" type="UUID">
+      The task ID
+    </ResponseField>
+
+    <ResponseField name="resolvedBy" type="UUID">
+      Entity that made the selection (if known)
+    </ResponseField>
+
+    <ResponseField name="resolvedAt" type="number">
+      Timestamp when resolved
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Basic Example
+
+```typescript
+import { ApprovalService, STANDARD_OPTIONS } from "@elizaos/core";
+
+const approvalService = runtime.getService(ServiceType.APPROVAL) as ApprovalService;
+
+const result = await approvalService.requestApproval({
+  name: "POST_TWEET",
+  description: "Post tweet: 'Hello from elizaOS!'",
+  roomId: message.roomId,
+  options: STANDARD_OPTIONS.CONFIRM,
+  timeoutMs: 60000, // 1 minute
+  timeoutDefault: "cancel",
+});
+
+if (result.success && result.selectedOption === "confirm") {
+  await postTweet("Hello from elizaOS!");
+  console.log("Tweet posted!");
+} else {
+  console.log("Tweet cancelled");
+}
+```
+
+### With Callbacks
+
+```typescript
+const result = await approvalService.requestApproval({
+  name: "EXEC_COMMAND",
+  description: `Execute command: ${command}`,
+  roomId: message.roomId,
+  options: STANDARD_OPTIONS.ALLOW_ONCE_ALWAYS_DENY,
+  timeoutMs: 120000,
+  timeoutDefault: "deny",
+  onSelect: async (option, task, runtime) => {
+    if (option === "allow-always") {
+      // Add to allowlist
+      await addToAllowlist(command);
+      runtime.logger.info(`Added ${command} to allowlist`);
+    }
+  },
+  onTimeout: async (task, runtime) => {
+    runtime.logger.warn(`Approval timeout for: ${command}`);
+  },
+});
+```
+
+### Custom Options
+
+```typescript
+const result = await approvalService.requestApproval({
+  name: "DEPLOY_TARGET",
+  description: "Select deployment target",
+  roomId: message.roomId,
+  options: [
+    { name: "staging", description: "Deploy to staging environment" },
+    { name: "production", description: "Deploy to production environment" },
+    { name: "dev", description: "Deploy to development environment" },
+    { name: "cancel", description: "Cancel deployment", isCancel: true },
+  ],
+});
+
+if (result.success) {
+  await deployTo(result.selectedOption);
+}
+```
+
+### requestApprovalAsync (Fire and Forget)
+
+Create an approval request without waiting for the result.
+
+```typescript
+async requestApprovalAsync(request: ApprovalRequest): Promise<UUID>
+```
+
+Returns the task ID immediately. Use callbacks for handling the result.
+
+```typescript
+const taskId = await approvalService.requestApprovalAsync({
+  name: "BACKGROUND_TASK",
+  description: "Run background cleanup?",
+  roomId: message.roomId,
+  options: STANDARD_OPTIONS.YES_NO,
+  onSelect: async (option, task, runtime) => {
+    if (option === "yes") {
+      await runCleanup();
+    }
+  },
+});
+
+console.log(`Approval request created: ${taskId}`);
+// Continue without waiting
+```
+
+## Managing Approvals
+
+### Cancel Approval
+
+Cancel a pending approval request.
+
+```typescript
+async cancelApproval(taskId: UUID): Promise<void>
+```
+
+```typescript
+const taskId = await approvalService.requestApprovalAsync({
+  name: "LONG_OPERATION",
+  description: "Execute long operation?",
+  roomId: message.roomId,
+  options: STANDARD_OPTIONS.CONFIRM,
+});
+
+// Later, if operation is no longer needed
+await approvalService.cancelApproval(taskId);
+```
+
+### Get Pending Approvals
+
+Retrieve all pending approvals for a room.
+
+```typescript
+async getPendingApprovals(roomId: UUID): Promise<Task[]>
+```
+
+```typescript
+const pending = await approvalService.getPendingApprovals(message.roomId);
+
+console.log(`${pending.length} pending approvals`);
+for (const task of pending) {
+  console.log(`- ${task.name}: ${task.description}`);
+}
+```
+
+## Role-Based Permissions
+
+Restrict approvals to specific roles:
+
+```typescript
+const result = await approvalService.requestApproval({
+  name: "ADMIN_ACTION",
+  description: "Delete all user data?",
+  roomId: message.roomId,
+  options: STANDARD_OPTIONS.APPROVE_DENY,
+  allowedRoles: ["OWNER", "ADMIN"], // Only owners and admins can approve
+});
+```
+
+### Role Validation
+
+The service automatically validates roles:
+1. Checks if the room has a world ID (server context)
+2. Retrieves user's role in that server
+3. Compares against `allowedRoles`
+4. Allows approval in DMs by default
+
+```typescript
+// In a server channel
+User with MEMBER role: ❌ Cannot approve (not in allowedRoles)
+User with ADMIN role:  ✅ Can approve
+User with OWNER role:  ✅ Can approve
+
+// In a DM
+Any user: ✅ Can approve (no role restriction in DMs)
+```
+
+## Helper Functions
+
+### requestConfirmation
+
+Simplified helper for confirm/cancel approvals.
+
+```typescript
+async function requestConfirmation(
+  runtime: IAgentRuntime,
+  params: {
+    description: string;
+    roomId: UUID;
+    entityId?: UUID;
+    timeoutMs?: number;
+    onConfirm?: (task: Task, runtime: IAgentRuntime) => Promise<void>;
+    onCancel?: (task: Task, runtime: IAgentRuntime) => Promise<void>;
+  }
+): Promise<boolean>
+```
+
+Returns `true` if confirmed, `false` otherwise.
+
+```typescript
+import { requestConfirmation } from "@elizaos/core";
+
+const confirmed = await requestConfirmation(runtime, {
+  description: "Delete this file?",
+  roomId: message.roomId,
+  timeoutMs: 30000,
+  onConfirm: async (task, runtime) => {
+    runtime.logger.info("User confirmed deletion");
+  },
+  onCancel: async (task, runtime) => {
+    runtime.logger.info("User cancelled deletion");
+  },
+});
+
+if (confirmed) {
+  await deleteFile();
+}
+```
+
+## Approval Option Configuration
+
+### ApprovalOption Interface
+
+```typescript
+interface ApprovalOption {
+  name: string;           // Unique identifier for the option
+  description?: string;   // Human-readable description
+  isDefault?: boolean;    // If true, this option is the default when approval times out
+  isCancel?: boolean;     // If true, this option cancels/aborts the task
+}
+```
+
+### Example: Complex Approval
+
+```typescript
+const result = await approvalService.requestApproval({
+  name: "PAYMENT_APPROVAL",
+  description: `Approve payment of $${amount} to ${recipient}`,
+  roomId: message.roomId,
+  options: [
+    {
+      name: "approve",
+      description: "Approve and process payment",
+    },
+    {
+      name: "review",
+      description: "Request additional review",
+    },
+    {
+      name: "deny",
+      description: "Deny payment request",
+      isCancel: true,
+    },
+  ],
+  timeoutMs: 300000, // 5 minutes
+  timeoutDefault: "review", // Default to review on timeout
+  allowedRoles: ["OWNER", "ADMIN", "FINANCE"],
+  metadata: {
+    amount,
+    recipient,
+    requestedBy: message.entityId,
+  },
+});
+
+switch (result.selectedOption) {
+  case "approve":
+    await processPayment(amount, recipient);
+    break;
+  case "review":
+    await requestManualReview(amount, recipient);
+    break;
+  case "deny":
+    await notifyDenial(recipient);
+    break;
+}
+```
+
+## Approval Chains
+
+Create sequential approval workflows:
+
+```typescript
+async function multiStepApproval(runtime: IAgentRuntime, roomId: UUID) {
+  const approvalService = runtime.getService(ServiceType.APPROVAL) as ApprovalService;
+  
+  // Step 1: Approve action
+  const step1 = await approvalService.requestApproval({
+    name: "DEPLOY_STEP1",
+    description: "Step 1: Approve deployment plan",
+    roomId,
+    options: STANDARD_OPTIONS.APPROVE_DENY,
+  });
+  
+  if (!step1.success) {
+    return { success: false, step: 1 };
+  }
+  
+  // Step 2: Select target
+  const step2 = await approvalService.requestApproval({
+    name: "DEPLOY_STEP2",
+    description: "Step 2: Select deployment target",
+    roomId,
+    options: [
+      { name: "staging", description: "Staging environment" },
+      { name: "production", description: "Production environment" },
+      { name: "cancel", description: "Cancel", isCancel: true },
+    ],
+  });
+  
+  if (!step2.success) {
+    return { success: false, step: 2 };
+  }
+  
+  // Step 3: Final confirmation
+  const step3 = await approvalService.requestApproval({
+    name: "DEPLOY_STEP3",
+    description: `Step 3: Confirm deployment to ${step2.selectedOption}`,
+    roomId,
+    options: STANDARD_OPTIONS.CONFIRM,
+  });
+  
+  if (!step3.success) {
+    return { success: false, step: 3 };
+  }
+  
+  // All steps approved
+  await deployTo(step2.selectedOption);
+  return { success: true, target: step2.selectedOption };
+}
+```
+
+## Timeout Handling
+
+### Timeout Configuration
+
+```typescript
+const result = await approvalService.requestApproval({
+  name: "TIMED_APPROVAL",
+  description: "Quick action required",
+  roomId: message.roomId,
+  options: STANDARD_OPTIONS.YES_NO,
+  timeoutMs: 30000, // 30 seconds
+  timeoutDefault: "no", // Auto-deny on timeout
+  onTimeout: async (task, runtime) => {
+    await runtime.log({
+      entityId: runtime.agentId,
+      roomId: task.roomId,
+      type: "approval_timeout",
+      body: { taskId: task.id, name: task.name },
+    });
+  },
+});
+
+if (result.timedOut) {
+  console.log("Approval timed out, using default:", result.selectedOption);
+}
+```
+
+### Best Practices
+
+- Set reasonable timeout values (30s - 5min for most cases)
+- Always specify `timeoutDefault` to prevent ambiguity
+- Use `onTimeout` callback for logging and cleanup
+- Consider user context when setting timeouts (urgent vs. background)
+
+## Task Integration
+
+The approval service creates tasks with special tags:
+
+```typescript
+const task = {
+  name: request.name,
+  description: request.description,
+  roomId: request.roomId,
+  entityId: request.entityId,
+  tags: [
+    "AWAITING_CHOICE", // Indicates this task requires user input
+    "APPROVAL",         // Indicates this is an approval task
+    ...request.tags,    // Any custom tags
+  ],
+  metadata: {
+    options: request.options.map(opt => ({
+      name: opt.name,
+      description: opt.description ?? "",
+    })),
+    approvalRequest: {
+      timeoutMs: request.timeoutMs,
+      timeoutDefault: request.timeoutDefault,
+      allowedRoles: request.allowedRoles ?? ["OWNER", "ADMIN"],
+      createdAt: Date.now(),
+    },
+  },
+};
+```
+
+### Task Workers
+
+The service automatically registers task workers for each approval type:
+
+```typescript
+const worker: TaskWorker = {
+  name: request.name,
+  
+  validate: async (runtime, message, state) => {
+    // Check if user has required role
+    return userHasRole(message.entityId, allowedRoles);
+  },
+  
+  execute: async (runtime, options, task) => {
+    // Handle the selection
+    await approvalService.handleSelection(
+      task.id,
+      options.option as string,
+      options.resolvedBy as UUID,
+    );
+  },
+};
+```
+
+## Monitoring and Debugging
+
+### Logging
+
+The service provides detailed logs:
+
+```typescript
+// Approval created
+"Approval request created" // { taskId, name, roomId, options, timeoutMs }
+
+// Timeout
+"Approval timed out" // { taskId, name }
+
+// Selection
+"Approval selection handled" // { taskId, selectedOption, resolvedBy, isCancel }
+
+// Cancellation
+"Approval cancelled" // { taskId }
+```
+
+### Example: Monitoring Dashboard
+
+```typescript
+const approvalService = runtime.getService(ServiceType.APPROVAL) as ApprovalService;
+
+// Get all pending approvals across all rooms
+const allRooms = await runtime.getRooms();
+const allPending = await Promise.all(
+  allRooms.map(room => approvalService.getPendingApprovals(room.id))
+);
+
+const flatPending = allPending.flat();
+
+console.log(`Total pending approvals: ${flatPending.length}`);
+for (const task of flatPending) {
+  const metadata = task.metadata?.approvalRequest as any;
+  const createdAt = metadata?.createdAt || 0;
+  const age = Date.now() - createdAt;
+  
+  console.log(`
+  Task: ${task.name}
+  Description: ${task.description}
+  Room: ${task.roomId}
+  Age: ${Math.floor(age / 1000)}s
+  Timeout: ${metadata?.timeoutMs ? metadata.timeoutMs / 1000 + 's' : 'none'}
+  `);
+}
+```
+
+## Best Practices
+
+### Approval Design
+
+- **Clear descriptions**: Make it obvious what's being approved
+- **Reasonable options**: 2-4 options is ideal
+- **Safe defaults**: Use conservative timeout defaults
+- **Proper roles**: Restrict sensitive approvals to appropriate roles
+
+### Error Handling
+
+- Always check `result.success` before proceeding
+- Handle `timedOut` and `cancelled` cases explicitly
+- Use try-catch around approval logic
+- Provide user feedback for all outcomes
+
+### Performance
+
+- Use async mode for non-blocking approvals
+- Don't create approval spam (consolidate related approvals)
+- Clean up old pending approvals periodically
+- Monitor approval response times
+
+### Security
+
+- Always use `allowedRoles` for sensitive operations
+- Validate approval context before executing
+- Log all approval decisions for audit
+- Consider approval chains for critical actions
+
+## Troubleshooting
+
+### Approval Not Showing
+
+1. Check that task was created successfully
+2. Verify client is listening for `AWAITING_CHOICE` tasks
+3. Review task metadata for proper option formatting
+4. Check room permissions
+
+### Role Validation Failing
+
+1. Verify user has correct role in server
+2. Check if room has worldId (required for role checks)
+3. Test in DM (should bypass role checks)
+4. Review allowedRoles configuration
+
+### Timeout Not Working
+
+1. Ensure `timeoutMs` is set
+2. Verify `timeoutDefault` matches an option name
+3. Check if service was stopped before timeout
+4. Review timeout callback for errors
+
+### Memory Leaks
+
+1. Ensure all approvals eventually resolve
+2. Check for orphaned tasks
+3. Clean up old pending approvals
+4. Monitor service.pendingApprovals size
+
+## Related
+
+- [Task Service](/api/services/task-service)
+- [Message Service](/api/services/message-service)
+- [Actions](/api/actions)
+- [Task System](/guides/tasks)

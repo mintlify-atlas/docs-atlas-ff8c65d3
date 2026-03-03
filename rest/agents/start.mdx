@@ -1,0 +1,291 @@
+---
+title: Start Agent
+description: Start an agent's runtime to begin processing messages
+api: POST /agents/{agentId}/start
+---
+
+## Endpoint
+
+```
+POST /agents/{agentId}/start
+```
+
+Starts an agent's runtime, enabling it to process messages, execute actions, and interact with users. An agent must be started before it can respond to messages.
+
+## Request
+
+### Path Parameters
+
+<ParamField path="agentId" type="string" required>
+  Unique identifier (UUID) of the agent to start
+</ParamField>
+
+### Headers
+
+<ParamField header="Content-Type" type="string" required>
+  Must be `application/json`
+</ParamField>
+
+<ParamField header="Authorization" type="string">
+  Bearer token for authentication (if required)
+</ParamField>
+
+### Body Parameters (Optional)
+
+<ParamField body="enableAutonomy" type="boolean" default="false">
+  Enable autonomous mode where the agent can initiate conversations
+</ParamField>
+
+<ParamField body="settings" type="object">
+  Runtime-specific settings to override agent configuration
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the agent started successfully
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Status message
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+  Agent runtime details
+  
+  <ResponseField name="data.agentId" type="string" required>
+    Unique identifier for the agent
+  </ResponseField>
+  
+  <ResponseField name="data.status" type="string" required>
+    New status: `active`
+  </ResponseField>
+  
+  <ResponseField name="data.startedAt" type="number">
+    Unix timestamp when the agent was started
+  </ResponseField>
+  
+  <ResponseField name="data.enableAutonomy" type="boolean">
+    Whether autonomy is enabled
+  </ResponseField>
+</ResponseField>
+
+## Examples
+
+### Basic Start
+
+```bash
+curl -X POST http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/start \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+### Start with Autonomy
+
+```bash
+curl -X POST http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/start \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "enableAutonomy": true
+  }'
+```
+
+### Start with Custom Settings
+
+```bash
+curl -X POST http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/start \
+  -H "Content-Type: application/json" \
+  -d '{
+    "settings": {
+      "temperature": 0.8,
+      "maxTokens": 2000
+    }
+  }'
+```
+
+## Response Example
+
+### Success Response
+
+```json
+{
+  "success": true,
+  "message": "Agent started successfully",
+  "data": {
+    "agentId": "550e8400-e29b-41d4-a716-446655440000",
+    "status": "active",
+    "startedAt": 1709683200000,
+    "enableAutonomy": false
+  }
+}
+```
+
+## Code Examples
+
+### JavaScript/Node.js
+
+```javascript
+const agentId = "550e8400-e29b-41d4-a716-446655440000";
+
+const response = await fetch(
+  `http://localhost:3000/agents/${agentId}/start`,
+  {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      enableAutonomy: false
+    })
+  }
+);
+
+const { success, message, data } = await response.json();
+
+if (success) {
+  console.log(message);
+  console.log(`Agent status: ${data.status}`);
+}
+```
+
+### Python
+
+```python
+import requests
+
+agent_id = "550e8400-e29b-41d4-a716-446655440000"
+
+response = requests.post(
+    f'http://localhost:3000/agents/{agent_id}/start',
+    json={'enableAutonomy': False}
+)
+
+data = response.json()
+
+if data['success']:
+    print(data['message'])
+    print(f"Agent status: {data['data']['status']}")
+```
+
+### TypeScript
+
+```typescript
+interface StartAgentRequest {
+  enableAutonomy?: boolean;
+  settings?: Record<string, any>;
+}
+
+interface StartAgentResponse {
+  success: boolean;
+  message: string;
+  data: {
+    agentId: string;
+    status: 'active';
+    startedAt: number;
+    enableAutonomy?: boolean;
+  };
+}
+
+const agentId = "550e8400-e29b-41d4-a716-446655440000";
+
+const request: StartAgentRequest = {
+  enableAutonomy: false
+};
+
+const response = await fetch(
+  `http://localhost:3000/agents/${agentId}/start`,
+  {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request)
+  }
+);
+
+const result: StartAgentResponse = await response.json();
+```
+
+## Error Responses
+
+### 404 Not Found
+
+```json
+{
+  "success": false,
+  "error": "Agent not found"
+}
+```
+
+### 409 Conflict
+
+```json
+{
+  "success": false,
+  "error": "Agent is already running"
+}
+```
+
+### 400 Bad Request
+
+```json
+{
+  "success": false,
+  "error": "Invalid agent ID format"
+}
+```
+
+### 500 Internal Server Error
+
+```json
+{
+  "success": false,
+  "error": "Failed to start agent runtime"
+}
+```
+
+## Autonomy Mode
+
+When autonomy is enabled, the agent can:
+
+- Initiate conversations proactively
+- Respond to scheduled triggers
+- Monitor channels for relevant topics
+- Execute background tasks
+
+<Note>
+Autonomy mode requires additional configuration in your agent's character settings. See the autonomy documentation for more details.
+</Note>
+
+## Startup Process
+
+When an agent starts, the following happens:
+
+1. **Initialize Runtime** - Create the agent runtime environment
+2. **Load Configuration** - Load character settings and plugins
+3. **Connect Services** - Initialize database and external service connections
+4. **Register Actions** - Register available actions and providers
+5. **Start Listening** - Begin processing incoming messages
+
+## Health Checks
+
+After starting an agent, verify it's running correctly:
+
+```bash
+curl http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000
+```
+
+Check that the `status` field is `active`.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Send Message" icon="paper-plane" href="/rest/messaging/send-message">
+    Start chatting with your agent
+  </Card>
+  <Card title="Stop Agent" icon="stop" href="/rest/agents/stop">
+    Stop the agent when done
+  </Card>
+  <Card title="Get Agent" icon="info" href="/rest/agents/get">
+    Check agent status and details
+  </Card>
+</CardGroup>

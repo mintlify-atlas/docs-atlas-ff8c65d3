@@ -1,0 +1,628 @@
+---
+title: "Message Service"
+description: "Core service for handling message processing, response generation, and conversation flow"
+---
+
+## Overview
+
+The `DefaultMessageService` implements the `IMessageService` interface and provides the complete message processing pipeline for elizaOS. This is the standard message handler used by the framework and can be replaced with custom implementations.
+
+### Key Features
+
+- **Message validation and memory creation**: Stores incoming messages in the memory system
+- **Smart response decision**: Uses `shouldRespond` logic to determine when to reply
+- **Multi-step processing**: Supports both single-shot and multi-step reasoning workflows
+- **Action execution**: Processes and executes actions based on message context
+- **Attachment processing**: Handles images, documents, audio, and video with automatic transcription and description
+- **Pre-evaluator middleware**: Security gates for blocking or rewriting messages
+- **Streaming support**: Real-time response streaming with voice synthesis
+
+## Service Lifecycle
+
+### Instantiation
+
+The message service is automatically instantiated by the runtime and registered as the default message handler:
+
+```typescript
+import { DefaultMessageService } from "@elizaos/core";
+
+const messageService = new DefaultMessageService();
+```
+
+### Message Flow
+
+1. **Receive Message**: Message enters through `handleMessage()`
+2. **Pre-evaluation**: Security checks via `evaluatePre()`
+3. **Memory Storage**: Message saved to memory system
+4. **Response Decision**: `shouldRespond()` determines if agent should reply
+5. **Processing Strategy**: Single-shot or multi-step based on configuration
+6. **Action Execution**: Execute actions if needed
+7. **Response Generation**: Generate and send response
+8. **Post-evaluation**: Run evaluators on the response
+
+## Main Method
+
+### handleMessage
+
+Main entry point for message processing.
+
+```typescript
+async handleMessage(
+  runtime: IAgentRuntime,
+  message: Memory,
+  callback?: HandlerCallback,
+  options?: MessageProcessingOptions,
+): Promise<MessageProcessingResult>
+```
+
+<ParamField path="runtime" type="IAgentRuntime" required>
+  The agent runtime instance
+</ParamField>
+
+<ParamField path="message" type="Memory" required>
+  The incoming message to process
+</ParamField>
+
+<ParamField path="callback" type="HandlerCallback">
+  Optional callback for streaming responses and action results
+</ParamField>
+
+<ParamField path="options" type="MessageProcessingOptions">
+  Optional processing configuration
+
+  <Expandable title="MessageProcessingOptions">
+    <ParamField path="maxRetries" type="number" default="3">
+      Maximum number of retry attempts for failed operations
+    </ParamField>
+
+    <ParamField path="timeoutDuration" type="number" default="3600000">
+      Timeout in milliseconds (default: 1 hour)
+    </ParamField>
+
+    <ParamField path="useMultiStep" type="boolean">
+      Enable multi-step reasoning workflow. If not provided, reads from `USE_MULTI_STEP` setting
+    </ParamField>
+
+    <ParamField path="maxMultiStepIterations" type="number" default="6">
+      Maximum iterations for multi-step processing
+    </ParamField>
+
+    <ParamField path="onStreamChunk" type="(chunk: string, messageId?: string) => Promise<void>">
+      Callback for streaming response chunks in real-time
+    </ParamField>
+
+    <ParamField path="shouldRespondModel" type="'small' | 'large'" default="'small'">
+      Model size for shouldRespond evaluation. 'large' enables better context analysis and planning
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="result" type="MessageProcessingResult">
+  The processing result
+
+  <Expandable title="MessageProcessingResult">
+    <ResponseField name="didRespond" type="boolean">
+      Whether the agent responded to the message
+    </ResponseField>
+
+    <ResponseField name="responseContent" type="Content | null">
+      The generated response content
+    </ResponseField>
+
+    <ResponseField name="responseMessages" type="Memory[]">
+      Array of response messages created
+    </ResponseField>
+
+    <ResponseField name="state" type="State">
+      The final state after processing
+    </ResponseField>
+
+    <ResponseField name="mode" type="'simple' | 'actions' | 'none'">
+      The processing strategy used
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example Usage
+
+```typescript
+import { DefaultMessageService } from "@elizaos/core";
+
+const messageService = new DefaultMessageService();
+
+// Basic message handling
+const result = await messageService.handleMessage(
+  runtime,
+  incomingMessage,
+  async (content) => {
+    console.log("Response:", content.text);
+  },
+  {
+    useMultiStep: true,
+    maxMultiStepIterations: 5,
+  }
+);
+
+if (result.didRespond) {
+  console.log("Agent responded:", result.responseContent?.text);
+}
+```
+
+### Streaming Responses
+
+```typescript
+const result = await messageService.handleMessage(
+  runtime,
+  message,
+  undefined,
+  {
+    onStreamChunk: async (chunk, messageId) => {
+      // Stream chunk to client
+      process.stdout.write(chunk);
+    },
+  }
+);
+```
+
+## Response Decision Logic
+
+### shouldRespond
+
+Determines whether the agent should respond to a message using rule-based and LLM evaluation.
+
+```typescript
+shouldRespond(
+  runtime: IAgentRuntime,
+  message: Memory,
+  room?: Room,
+  mentionContext?: MentionContext,
+): ResponseDecision
+```
+
+<ParamField path="runtime" type="IAgentRuntime" required>
+  The agent runtime instance
+</ParamField>
+
+<ParamField path="message" type="Memory" required>
+  The message to evaluate
+</ParamField>
+
+<ParamField path="room" type="Room">
+  The room/channel context
+</ParamField>
+
+<ParamField path="mentionContext" type="MentionContext">
+  Information about mentions and replies
+</ParamField>
+
+<ResponseField name="decision" type="ResponseDecision">
+  <Expandable title="ResponseDecision">
+    <ResponseField name="shouldRespond" type="boolean">
+      Whether the agent should respond
+    </ResponseField>
+
+    <ResponseField name="skipEvaluation" type="boolean">
+      Whether LLM evaluation was skipped (rule-based decision)
+    </ResponseField>
+
+    <ResponseField name="reason" type="string">
+      Explanation for the decision
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Decision Flow
+
+1. **Private Channels**: Always respond in DMs, voice DMs, and API channels
+2. **Whitelisted Sources**: Always respond to sources like `client_chat`
+3. **Platform Mentions**: Always respond to @mentions and replies
+4. **LLM Evaluation**: For all other cases, use LLM to decide
+
+### Configuration
+
+```typescript
+// Disable shouldRespond checks (ChatGPT mode)
+runtime.setSetting("CHECK_SHOULD_RESPOND", "false");
+
+// Add custom channels that always trigger responses
+runtime.setSetting("ALWAYS_RESPOND_CHANNELS", "[FORUM, ANNOUNCEMENT]");
+
+// Add custom sources
+runtime.setSetting("ALWAYS_RESPOND_SOURCES", "[webhook, api]");
+
+// Use large model for shouldRespond evaluation
+runtime.setSetting("SHOULD_RESPOND_MODEL", "large");
+```
+
+## Attachment Processing
+
+### processAttachments
+
+Processes message attachments by generating descriptions, transcriptions, and extracting content.
+
+```typescript
+async processAttachments(
+  runtime: IAgentRuntime,
+  attachments: Media[],
+): Promise<Media[]>
+```
+
+<ParamField path="runtime" type="IAgentRuntime" required>
+  The agent runtime instance
+</ParamField>
+
+<ParamField path="attachments" type="Media[]" required>
+  Array of media attachments to process
+</ParamField>
+
+<ResponseField name="processedAttachments" type="Media[]">
+  Array of processed attachments with descriptions and transcriptions
+</ResponseField>
+
+### Supported Types
+
+<AccordionGroup>
+  <Accordion title="Images" icon="image">
+    Generates descriptions using vision models:
+    - Extracts visual content and context
+    - Creates accessible descriptions
+    - Adds title and text fields
+    
+    Disable with: `runtime.setSetting("DISABLE_IMAGE_DESCRIPTION", "true")`
+  </Accordion>
+
+  <Accordion title="Audio" icon="microphone">
+    Transcribes audio to text:
+    - Supports remote and local URLs
+    - Uses speech-to-text models
+    - Adds transcript to text field
+  </Accordion>
+
+  <Accordion title="Video" icon="video">
+    Transcribes video audio track:
+    - Extracts audio for transcription
+    - Generates text transcript
+    - Preserves video metadata
+  </Accordion>
+
+  <Accordion title="Documents" icon="file">
+    Extracts text content:
+    - Supports plain text documents
+    - Extracts file content
+    - Skips binary formats
+  </Accordion>
+</AccordionGroup>
+
+### Example
+
+```typescript
+const message = {
+  content: {
+    text: "Check out this image",
+    attachments: [
+      {
+        id: "img1",
+        url: "https://example.com/photo.jpg",
+        contentType: ContentType.IMAGE,
+      },
+      {
+        id: "aud1",
+        url: "https://example.com/audio.mp3",
+        contentType: ContentType.AUDIO,
+      },
+    ],
+  },
+};
+
+const service = new DefaultMessageService();
+const processed = await service.processAttachments(
+  runtime,
+  message.content.attachments
+);
+
+// Processed attachments now have descriptions/transcripts
+console.log(processed[0].description); // "A sunset over mountains"
+console.log(processed[1].text); // "Hello, this is a test recording..."
+```
+
+## Processing Strategies
+
+### Single-Shot Mode
+
+Direct response generation with optional action execution.
+
+**Use cases:**
+- Quick responses
+- Simple queries
+- Conversational replies
+
+**Configuration:**
+```typescript
+const result = await messageService.handleMessage(
+  runtime,
+  message,
+  callback,
+  { useMultiStep: false }
+);
+```
+
+### Multi-Step Mode
+
+Iterative reasoning with action execution and state management.
+
+**Use cases:**
+- Complex tasks requiring planning
+- Multi-action workflows
+- Tasks needing decision trees
+
+**Configuration:**
+```typescript
+const result = await messageService.handleMessage(
+  runtime,
+  message,
+  callback,
+  {
+    useMultiStep: true,
+    maxMultiStepIterations: 10,
+  }
+);
+```
+
+**Environment variable:**
+```bash
+USE_MULTI_STEP=true
+MAX_MULTISTEP_ITERATIONS=6
+```
+
+## Pre-Evaluator Middleware
+
+Pre-evaluators act as security gates that can block or rewrite messages before processing.
+
+### Use Cases
+
+- **Prompt injection detection**: Block malicious inputs
+- **Credential redaction**: Remove sensitive information
+- **Content filtering**: Block inappropriate content
+- **Message sanitization**: Clean and normalize inputs
+
+### Example
+
+```typescript
+// Register a pre-evaluator
+runtime.registerEvaluator({
+  name: "SECURITY_CHECK",
+  phase: "pre",
+  similes: ["security", "prompt-injection"],
+  handler: async (runtime, message) => {
+    const text = message.content.text || "";
+    
+    // Block prompt injection attempts
+    if (text.includes("ignore previous instructions")) {
+      return {
+        blocked: true,
+        reason: "Potential prompt injection detected",
+      };
+    }
+    
+    // Redact API keys
+    if (text.match(/sk-[a-zA-Z0-9]{32}/)) {
+      return {
+        blocked: false,
+        rewrittenText: text.replace(/sk-[a-zA-Z0-9]{32}/g, "[REDACTED]"),
+        reason: "API key redacted",
+      };
+    }
+    
+    return { blocked: false };
+  },
+});
+```
+
+## Voice Synthesis
+
+The message service includes built-in voice synthesis for audio responses.
+
+### Features
+
+- **First sentence streaming**: Sends voice for the first sentence immediately
+- **Voice caching**: Caches generated audio to avoid regeneration
+- **Background processing**: Voice generation doesn't block response
+- **Configurable voices**: Supports custom voice models and IDs
+
+### Configuration
+
+```typescript
+// In character file
+{
+  "name": "MyAgent",
+  "settings": {
+    "voice": {
+      "model": "en_US-male-medium",
+      "voiceId": "custom-voice-id"
+    }
+  }
+}
+```
+
+### How It Works
+
+1. Response text is streamed
+2. When first sentence completes, it's sent to TTS
+3. Audio is generated and cached
+4. Audio attachment is sent via callback
+5. Remaining text is processed similarly
+
+## Events
+
+The message service emits several events during processing:
+
+### RUN_STARTED
+
+Emitted when message processing begins.
+
+```typescript
+{
+  runtime: IAgentRuntime,
+  source: "messageHandler",
+  runId: UUID,
+  messageId: UUID,
+  roomId: UUID,
+  entityId: UUID,
+  startTime: number,
+  status: "started"
+}
+```
+
+### RUN_ENDED
+
+Emitted when message processing completes.
+
+```typescript
+{
+  runtime: IAgentRuntime,
+  source: "messageHandler",
+  runId: UUID,
+  messageId: UUID,
+  roomId: UUID,
+  entityId: UUID,
+  startTime: number,
+  endTime: number,
+  duration: number,
+  status: "completed"
+}
+```
+
+### RUN_TIMEOUT
+
+Emitted when processing exceeds timeout duration.
+
+```typescript
+{
+  runtime: IAgentRuntime,
+  source: "messageHandler",
+  runId: UUID,
+  messageId: UUID,
+  roomId: UUID,
+  entityId: UUID,
+  startTime: number,
+  endTime: number,
+  duration: number,
+  status: "timeout",
+  error: "Run exceeded timeout"
+}
+```
+
+### MESSAGE_SENT
+
+Emitted after response is saved to memory.
+
+```typescript
+{
+  runtime: IAgentRuntime,
+  message: Memory,
+  source: string
+}
+```
+
+## Advanced Configuration
+
+### Bootstrap Settings
+
+```typescript
+// Start with LLM off by default (requires explicit activation)
+runtime.setSetting("BOOTSTRAP_DEFLLMOFF", "true");
+
+// Keep ignore responses in race conditions
+runtime.setSetting("BOOTSTRAP_KEEP_RESP", "true");
+
+// Disable image descriptions
+runtime.setSetting("DISABLE_IMAGE_DESCRIPTION", "true");
+```
+
+### Custom Message Service
+
+You can implement a custom message service by implementing the `IMessageService` interface:
+
+```typescript
+import { IMessageService } from "@elizaos/core";
+
+class CustomMessageService implements IMessageService {
+  async handleMessage(
+    runtime: IAgentRuntime,
+    message: Memory,
+    callback?: HandlerCallback,
+    options?: MessageProcessingOptions,
+  ): Promise<MessageProcessingResult> {
+    // Your custom implementation
+    return {
+      didRespond: true,
+      responseContent: { text: "Custom response" },
+      responseMessages: [],
+      state: {},
+      mode: "simple",
+    };
+  }
+}
+
+// Register custom service
+runtime.registerService(new CustomMessageService());
+```
+
+## Best Practices
+
+### Error Handling
+
+- Use timeout configuration to prevent hung processes
+- Implement retry logic for transient failures
+- Monitor RUN_TIMEOUT events for performance issues
+
+### Performance
+
+- Enable streaming for better UX in long responses
+- Use multi-step mode only when needed (adds overhead)
+- Cache voice synthesis results
+- Set appropriate timeout values
+
+### Security
+
+- Always use pre-evaluators for security checks
+- Redact sensitive information before processing
+- Validate user roles for privileged operations
+- Monitor for prompt injection attempts
+
+### Memory Management
+
+- Clean up old messages periodically
+- Use appropriate embedding generation priority
+- Monitor memory growth in long conversations
+
+## Troubleshooting
+
+### Agent Not Responding
+
+1. Check `shouldRespond` configuration
+2. Verify room is not muted
+3. Check if `BOOTSTRAP_DEFLLMOFF` is enabled
+4. Review logs for pre-evaluator blocks
+
+### Timeout Issues
+
+1. Increase `timeoutDuration` in options
+2. Monitor RUN_TIMEOUT events
+3. Check for slow model responses
+4. Review multi-step iteration count
+
+### Streaming Not Working
+
+1. Ensure `onStreamChunk` callback is provided
+2. Verify model supports streaming
+3. Check for XML parsing issues
+4. Review network connectivity
+
+## Related
+
+- [Embedding Service](/api/services/embedding-service)
+- [Task Service](/api/services/task-service)
+- [Approval Service](/api/services/approval-service)
+- [Actions](/api/actions)
+- [Evaluators](/api/evaluators)

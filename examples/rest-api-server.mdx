@@ -1,0 +1,488 @@
+---
+title: "REST API Server"
+description: "Expose your elizaOS agent via HTTP endpoints"
+---
+
+Build a REST API server to expose your agent over HTTP. This example shows how to create endpoints for chat, health checks, and agent information using Express.
+
+## Overview
+
+Turn your elizaOS agent into a web service that can be accessed from any HTTP client. Perfect for integrating agents into web applications, mobile apps, or other services.
+
+**What you'll learn:**
+- Create HTTP endpoints for your agent
+- Handle chat requests
+- Implement health checks
+- Manage conversation state
+- Add error handling
+
+---
+
+## Quick Start
+
+<Steps>
+  <Step title="Install Dependencies">
+    ```bash
+    bun add @elizaos/core @elizaos/plugin-openai @elizaos/plugin-sql express uuid
+    bun add -D @types/express
+    ```
+  </Step>
+  
+  <Step title="Create Server">
+    Create `server.ts` with the code below
+  </Step>
+  
+  <Step title="Start Server">
+    ```bash
+    export OPENAI_API_KEY="your-key"
+    bun run server.ts
+    ```
+  </Step>
+  
+  <Step title="Test API">
+    ```bash
+    curl -X POST http://localhost:3000/chat \
+      -H "Content-Type: application/json" \
+      -d '{"message": "Hello!"}'
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Complete Server Code
+
+```typescript server.ts
+import express from "express";
+import { AgentRuntime, createMessageMemory, stringToUuid } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import { v4 as uuidv4 } from "uuid";
+
+const app = express();
+app.use(express.json());
+
+// Character definition
+const character = {
+  name: "Eliza",
+  bio: "A helpful AI assistant available via REST API.",
+  system: "You are a helpful assistant. Provide clear, concise responses.",
+};
+
+console.log("🚀 Initializing Eliza API...");
+
+// Initialize runtime
+const runtime = new AgentRuntime({
+  character,
+  plugins: [sqlPlugin, openaiPlugin],
+});
+
+await runtime.initialize();
+console.log("✅ Runtime initialized");
+
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.json({
+    status: "healthy",
+    runtime: "elizaos",
+    character: character.name,
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Agent info endpoint
+app.get("/", (req, res) => {
+  res.json({
+    name: character.name,
+    bio: character.bio,
+    status: "ready",
+    endpoints: {
+      chat: "POST /chat",
+      health: "GET /health",
+      info: "GET /",
+    },
+  });
+});
+
+// Chat endpoint
+app.post("/chat", async (req, res) => {
+  try {
+    const { message, userId, conversationId } = req.body;
+
+    // Validate input
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({
+        error: "Message is required and must be a string",
+      });
+    }
+
+    // Generate or use provided IDs
+    const userIdUuid = userId || uuidv4();
+    const roomId = stringToUuid(conversationId || "default-room");
+
+    // Create message memory
+    const messageMemory = createMessageMemory({
+      id: uuidv4(),
+      entityId: stringToUuid(userIdUuid),
+      roomId,
+      content: { text: message },
+    });
+
+    // Collect response
+    let responseText = "";
+
+    // Handle message with streaming
+    await runtime.messageService!.handleMessage(
+      runtime,
+      messageMemory,
+      async (content) => {
+        if (content?.text) {
+          responseText += content.text;
+        }
+        return [];
+      }
+    );
+
+    // Return response
+    res.json({
+      response: responseText,
+      character: character.name,
+      userId: userIdUuid,
+      conversationId,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Error processing message:", error);
+    res.status(500).json({
+      error: "Failed to process message",
+      message: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
+// Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`\n🌐 Eliza API server running on http://localhost:${PORT}`);
+  console.log(`\n  Endpoints:`);
+  console.log(`  - GET  http://localhost:${PORT}/`);
+  console.log(`  - GET  http://localhost:${PORT}/health`);
+  console.log(`  - POST http://localhost:${PORT}/chat\n`);
+});
+
+// Graceful shutdown
+process.on("SIGTERM", async () => {
+  console.log("\n🚦 Shutting down gracefully...");
+  await runtime.stop();
+  process.exit(0);
+});
+```
+
+---
+
+## API Endpoints
+
+### GET / - Agent Information
+
+Returns information about the agent.
+
+**Request:**
+```bash
+curl http://localhost:3000/
+```
+
+**Response:**
+```json
+{
+  "name": "Eliza",
+  "bio": "A helpful AI assistant available via REST API.",
+  "status": "ready",
+  "endpoints": {
+    "chat": "POST /chat",
+    "health": "GET /health",
+    "info": "GET /"
+  }
+}
+```
+
+### GET /health - Health Check
+
+Check if the server is running and healthy.
+
+**Request:**
+```bash
+curl http://localhost:3000/health
+```
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "runtime": "elizaos",
+  "character": "Eliza",
+  "uptime": 123.45,
+  "timestamp": "2026-03-03T10:30:00.000Z"
+}
+```
+
+### POST /chat - Send Message
+
+Send a message to the agent and receive a response.
+
+**Request:**
+```bash
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "What is machine learning?",
+    "userId": "user-123",
+    "conversationId": "conv-456"
+  }'
+```
+
+**Parameters:**
+- `message` (required): The user's message
+- `userId` (optional): User identifier for tracking
+- `conversationId` (optional): Conversation identifier for context
+
+**Response:**
+```json
+{
+  "response": "Machine learning is a subset of artificial intelligence that enables systems to learn and improve from experience without being explicitly programmed. It focuses on developing algorithms that can access data and use it to learn for themselves.",
+  "character": "Eliza",
+  "userId": "user-123",
+  "conversationId": "conv-456",
+  "timestamp": "2026-03-03T10:30:00.000Z"
+}
+```
+
+---
+
+## Advanced Features
+
+### Streaming Responses
+
+Stream responses in real-time using Server-Sent Events:
+
+```typescript
+app.post("/chat/stream", async (req, res) => {
+  const { message, userId } = req.body;
+
+  // Set SSE headers
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const messageMemory = createMessageMemory({
+    id: uuidv4(),
+    entityId: stringToUuid(userId || uuidv4()),
+    roomId: stringToUuid("default"),
+    content: { text: message },
+  });
+
+  await runtime.messageService!.handleMessage(
+    runtime,
+    messageMemory,
+    async (content) => {
+      if (content?.text) {
+        res.write(`data: ${JSON.stringify({ text: content.text })}\n\n`);
+      }
+      return [];
+    }
+  );
+
+  res.write("data: [DONE]\n\n");
+  res.end();
+});
+```
+
+**Test streaming:**
+```bash
+curl -X POST http://localhost:3000/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Tell me a story"}'
+```
+
+### Conversation History
+
+Add endpoint to retrieve conversation history:
+
+```typescript
+app.get("/conversations/:conversationId/history", async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const roomId = stringToUuid(conversationId);
+
+    const memories = await runtime.getMemories({
+      roomId,
+      count: 50,
+    });
+
+    res.json({
+      conversationId,
+      messages: memories.map((m) => ({
+        id: m.id,
+        text: m.content.text,
+        timestamp: m.createdAt,
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch history" });
+  }
+});
+```
+
+### Rate Limiting
+
+Add rate limiting to prevent abuse:
+
+```bash
+bun add express-rate-limit
+```
+
+```typescript
+import rateLimit from "express-rate-limit";
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: "Too many requests, please try again later.",
+});
+
+app.use("/chat", limiter);
+```
+
+### Authentication
+
+Add API key authentication:
+
+```typescript
+const authenticateApiKey = (req, res, next) => {
+  const apiKey = req.headers["x-api-key"];
+  
+  if (!apiKey || apiKey !== process.env.API_KEY) {
+    return res.status(401).json({ error: "Invalid API key" });
+  }
+  
+  next();
+};
+
+app.use("/chat", authenticateApiKey);
+```
+
+### CORS Support
+
+Enable CORS for browser access:
+
+```bash
+bun add cors
+```
+
+```typescript
+import cors from "cors";
+
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGINS?.split(",") || "*",
+  methods: ["GET", "POST"],
+}));
+```
+
+---
+
+## Deployment
+
+### Docker
+
+Create `Dockerfile`:
+
+```dockerfile
+FROM oven/bun:1
+
+WORKDIR /app
+
+COPY package.json bun.lockb ./
+RUN bun install --frozen-lockfile
+
+COPY . .
+
+EXPOSE 3000
+
+CMD ["bun", "run", "server.ts"]
+```
+
+Build and run:
+
+```bash
+docker build -t eliza-api .
+docker run -p 3000:3000 -e OPENAI_API_KEY=$OPENAI_API_KEY eliza-api
+```
+
+### Environment Variables
+
+Create `.env` file:
+
+```bash
+OPENAI_API_KEY=sk-...
+PORT=3000
+API_KEY=your-secret-key
+ALLOWED_ORIGINS=https://yourdomain.com
+```
+
+---
+
+## Testing
+
+### Test Script
+
+```bash test.sh
+#!/bin/bash
+
+BASE_URL="http://localhost:3000"
+
+echo "Testing health endpoint..."
+curl -s "$BASE_URL/health" | jq
+
+echo -e "\n\nTesting chat endpoint..."
+curl -s -X POST "$BASE_URL/chat" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Hello, how are you?",
+    "userId": "test-user",
+    "conversationId": "test-conv"
+  }' | jq
+
+echo -e "\n\nTesting with follow-up..."
+curl -s -X POST "$BASE_URL/chat" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "What did we just talk about?",
+    "userId": "test-user",
+    "conversationId": "test-conv"
+  }' | jq
+```
+
+Run tests:
+```bash
+chmod +x test.sh
+./test.sh
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Serverless" icon="cloud" href="/examples/serverless">
+    Deploy to AWS Lambda, Vercel, or Cloudflare
+  </Card>
+  <Card title="Browser Integration" icon="browser" href="/examples/browser-integration">
+    Connect your API to a web frontend
+  </Card>
+  <Card title="Multi-Agent" icon="users" href="/examples/multi-agent">
+    Create APIs for multiple agents
+  </Card>
+  <Card title="Deploy Guide" icon="rocket" href="/guides/deploy-a-project">
+    Production deployment best practices
+  </Card>
+</CardGroup>

@@ -1,0 +1,714 @@
+---
+title: "Task Service"
+description: "Scheduled task execution service with recurring and one-time task support"
+---
+
+## Overview
+
+The `TaskService` schedules and executes tasks automatically based on time intervals or triggers. It provides a robust task execution system with support for recurring tasks, one-time tasks, validation, and blocking/non-blocking execution modes.
+
+### Key Features
+
+- **Recurring tasks**: Execute tasks on a regular interval
+- **One-time tasks**: Execute tasks once and auto-delete
+- **Task validation**: Validate tasks before execution
+- **Blocking control**: Prevent overlapping task runs
+- **Priority queuing**: Execute tasks based on timing and priority
+- **Worker registration**: Extensible task worker system
+- **Automatic cleanup**: Auto-delete completed one-time tasks
+
+## Service Lifecycle
+
+### Starting the Service
+
+```typescript
+import { TaskService } from "@elizaos/core";
+
+const service = await TaskService.start(runtime);
+```
+
+The service automatically:
+1. Starts the processing timer (checks every 1 second)
+2. Begins monitoring for scheduled tasks
+3. Executes tasks when their intervals elapse
+
+### Stopping the Service
+
+```typescript
+await service.stop();
+// or
+await TaskService.stop(runtime);
+```
+
+On stop, the service:
+1. Clears the processing interval
+2. Stops checking for tasks
+3. Clears the executing tasks set
+
+## Task Types
+
+### Recurring Tasks
+
+Tasks that execute repeatedly at a specified interval.
+
+```typescript
+await runtime.createTask({
+  name: "DAILY_REPORT",
+  description: "Generate daily report",
+  metadata: {
+    updatedAt: Date.now(),
+    updateInterval: 24 * 60 * 60 * 1000, // 24 hours
+  },
+  tags: ["queue", "repeat"],
+});
+```
+
+**Key characteristics:**
+- Must include `"repeat"` tag
+- Requires `updateInterval` in metadata (in milliseconds)
+- Updates `updatedAt` timestamp after each execution
+- Never auto-deleted
+
+### One-Time Tasks
+
+Tasks that execute once and are automatically deleted.
+
+```typescript
+await runtime.createTask({
+  name: "SEND_WELCOME_EMAIL",
+  description: "Send welcome email to new user",
+  metadata: {
+    updatedAt: Date.now(),
+    userId: "user123",
+  },
+  tags: ["queue"], // No "repeat" tag
+});
+```
+
+**Key characteristics:**
+- Must NOT include `"repeat"` tag
+- Executes as soon as possible
+- Automatically deleted after execution
+- Useful for deferred operations
+
+### Immediate Tasks
+
+Recurring tasks that execute immediately on first run.
+
+```typescript
+await runtime.createTask({
+  name: "IMMEDIATE_TASK",
+  description: "Execute immediately, then repeat",
+  metadata: {
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    updateInterval: 60 * 1000, // 1 minute
+  },
+  tags: ["queue", "repeat", "immediate"],
+});
+```
+
+**Key characteristics:**
+- Includes both `"repeat"` and `"immediate"` tags
+- Executes immediately on first check
+- Then follows normal interval schedule
+
+## Creating and Managing Tasks
+
+### Create Task
+
+```typescript
+const taskId = await runtime.createTask({
+  name: string,
+  description: string,
+  roomId?: UUID,
+  entityId?: UUID,
+  tags: string[],
+  metadata?: Record<string, unknown>,
+});
+```
+
+<ParamField path="name" type="string" required>
+  Unique identifier for the task type (must match a registered worker)
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Human-readable description of the task
+</ParamField>
+
+<ParamField path="roomId" type="UUID">
+  Optional room context for the task
+</ParamField>
+
+<ParamField path="entityId" type="UUID">
+  Optional entity associated with the task
+</ParamField>
+
+<ParamField path="tags" type="string[]" required>
+  Task tags. Must include `"queue"` for TaskService to process.
+  
+  Common tags:
+  - `"queue"`: Required for service to process
+  - `"repeat"`: Makes task recurring
+  - `"immediate"`: Executes immediately on first run
+</ParamField>
+
+<ParamField path="metadata" type="Record<string, unknown>">
+  Task metadata and configuration
+  
+  Common fields:
+  - `updatedAt`: Timestamp of last execution (required)
+  - `updateInterval`: Milliseconds between executions (for recurring tasks)
+  - `blocking`: Whether to prevent overlapping runs (default: true)
+  - Any custom data for the task worker
+</ParamField>
+
+### Update Task
+
+```typescript
+await runtime.updateTask(taskId, {
+  metadata: {
+    updatedAt: Date.now(),
+    // other metadata updates
+  },
+});
+```
+
+### Delete Task
+
+```typescript
+await runtime.deleteTask(taskId);
+```
+
+### Get Tasks
+
+```typescript
+// Get all queued tasks
+const tasks = await runtime.getTasks({ tags: ["queue"] });
+
+// Get tasks by name
+const tasks = await runtime.getTasksByName("MY_TASK");
+
+// Get tasks for a specific room
+const tasks = await runtime.getTasks({ roomId: "room-id" });
+```
+
+## Task Workers
+
+### TaskWorker Interface
+
+```typescript
+interface TaskWorker {
+  name: string;
+  validate?: (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State,
+  ) => Promise<boolean>;
+  execute: (
+    runtime: IAgentRuntime,
+    options: Record<string, JsonValue | object>,
+    task: Task,
+  ) => Promise<void>;
+}
+```
+
+### Register Task Worker
+
+```typescript
+runtime.registerTaskWorker({
+  name: "MY_TASK",
+  
+  validate: async (runtime, message, state) => {
+    // Optional: Validate before execution
+    // Return false to skip execution
+    return true;
+  },
+  
+  execute: async (runtime, options, task) => {
+    // Task execution logic
+    console.log("Executing task:", task.name);
+    console.log("Options:", options);
+    
+    // Access task metadata
+    const interval = options.updateInterval as number;
+    
+    // Perform work
+    await doWork();
+  },
+});
+```
+
+### Example: Recurring Cleanup Task
+
+```typescript
+// Register worker
+runtime.registerTaskWorker({
+  name: "CLEANUP_OLD_MESSAGES",
+  
+  validate: async (runtime, message, state) => {
+    // Only run during off-peak hours (example)
+    const hour = new Date().getHours();
+    return hour >= 2 && hour <= 5; // 2am - 5am
+  },
+  
+  execute: async (runtime, options, task) => {
+    runtime.logger.info("Starting cleanup task");
+    
+    const cutoffDate = Date.now() - (30 * 24 * 60 * 60 * 1000); // 30 days
+    
+    // Clean up old messages
+    const deleted = await runtime.deleteMemoriesOlderThan(
+      "messages",
+      cutoffDate
+    );
+    
+    runtime.logger.info(`Deleted ${deleted} old messages`);
+  },
+});
+
+// Create recurring task
+await runtime.createTask({
+  name: "CLEANUP_OLD_MESSAGES",
+  description: "Clean up messages older than 30 days",
+  metadata: {
+    updatedAt: Date.now(),
+    updateInterval: 24 * 60 * 60 * 1000, // Run daily
+  },
+  tags: ["queue", "repeat"],
+});
+```
+
+### Example: One-Time Notification
+
+```typescript
+// Register worker
+runtime.registerTaskWorker({
+  name: "SEND_NOTIFICATION",
+  
+  execute: async (runtime, options, task) => {
+    const userId = options.userId as string;
+    const message = options.message as string;
+    
+    await sendNotification(userId, message);
+    
+    runtime.logger.info(`Notification sent to ${userId}`);
+  },
+});
+
+// Create one-time task
+await runtime.createTask({
+  name: "SEND_NOTIFICATION",
+  description: "Send notification to user",
+  metadata: {
+    updatedAt: Date.now(),
+    userId: "user123",
+    message: "Your report is ready!",
+  },
+  tags: ["queue"], // No "repeat" - executes once and deletes
+});
+```
+
+## Blocking vs Non-Blocking
+
+### Blocking Mode (Default)
+
+Prevents overlapping executions of the same task.
+
+```typescript
+await runtime.createTask({
+  name: "LONG_TASK",
+  description: "Task that takes a while",
+  metadata: {
+    updatedAt: Date.now(),
+    updateInterval: 60 * 1000, // 1 minute
+    blocking: true, // Default
+  },
+  tags: ["queue", "repeat"],
+});
+```
+
+**Behavior:**
+- If task is still running when interval elapses, skip the next run
+- Prevents overlapping executions
+- Useful for tasks that must complete before running again
+
+### Non-Blocking Mode
+
+Allows overlapping executions of the same task.
+
+```typescript
+await runtime.createTask({
+  name: "CONCURRENT_TASK",
+  description: "Task that can run concurrently",
+  metadata: {
+    updatedAt: Date.now(),
+    updateInterval: 60 * 1000,
+    blocking: false, // Allow overlapping runs
+  },
+  tags: ["queue", "repeat"],
+});
+```
+
+**Behavior:**
+- Multiple instances can run simultaneously
+- Useful for independent operations
+- Be careful with shared resources
+
+## Task Execution Flow
+
+### Processing Loop
+
+```typescript
+Every 1 second (TICK_INTERVAL):
+  1. Get all tasks with "queue" tag
+  2. Validate tasks (run validate() if defined)
+  3. For each valid task:
+     a. Check if it's a one-time task → execute immediately
+     b. Check if it's recurring:
+        - If "immediate" tag and first run → execute
+        - Check if interval elapsed → execute
+     c. For blocking tasks, check if already executing → skip
+  4. Execute task via registered worker
+  5. For recurring tasks, update timestamp
+  6. For one-time tasks, delete after execution
+```
+
+### Execution Steps
+
+```typescript
+For each task:
+  1. Check if task has ID (skip if not)
+  2. Get registered worker for task.name (skip if not found)
+  3. Run worker.validate() if defined (skip if returns false)
+  4. Mark task as executing (add to executingTasks set)
+  5. For recurring tasks:
+     - Update task.metadata.updatedAt to current time
+  6. Execute worker.execute(runtime, metadata, task)
+  7. For one-time tasks:
+     - Delete task after execution
+  8. Remove from executingTasks set
+  9. Log execution duration
+```
+
+## Common Use Cases
+
+### Periodic Data Sync
+
+```typescript
+runtime.registerTaskWorker({
+  name: "SYNC_DATA",
+  execute: async (runtime, options, task) => {
+    const endpoint = options.endpoint as string;
+    const data = await fetchExternalData(endpoint);
+    await runtime.updateKnowledge(data);
+  },
+});
+
+await runtime.createTask({
+  name: "SYNC_DATA",
+  description: "Sync data from external API",
+  metadata: {
+    updatedAt: Date.now(),
+    updateInterval: 15 * 60 * 1000, // 15 minutes
+    endpoint: "https://api.example.com/data",
+  },
+  tags: ["queue", "repeat"],
+});
+```
+
+### Scheduled Reports
+
+```typescript
+runtime.registerTaskWorker({
+  name: "DAILY_REPORT",
+  execute: async (runtime, options, task) => {
+    const report = await generateReport(runtime);
+    await sendReportToAdmin(report);
+  },
+});
+
+await runtime.createTask({
+  name: "DAILY_REPORT",
+  description: "Generate and send daily report",
+  metadata: {
+    updatedAt: Date.now(),
+    updateInterval: 24 * 60 * 60 * 1000, // 24 hours
+  },
+  tags: ["queue", "repeat"],
+});
+```
+
+### Delayed Actions
+
+```typescript
+runtime.registerTaskWorker({
+  name: "DELAYED_MESSAGE",
+  execute: async (runtime, options, task) => {
+    const roomId = options.roomId as UUID;
+    const message = options.message as string;
+    
+    await runtime.sendMessage(roomId, message);
+  },
+});
+
+// Send message after 5 minutes
+await runtime.createTask({
+  name: "DELAYED_MESSAGE",
+  description: "Send delayed message",
+  metadata: {
+    updatedAt: Date.now() + (5 * 60 * 1000), // 5 minutes from now
+    roomId: "room-id",
+    message: "This is a delayed message!",
+  },
+  tags: ["queue"], // One-time task
+});
+```
+
+### Resource Monitoring
+
+```typescript
+runtime.registerTaskWorker({
+  name: "MONITOR_RESOURCES",
+  execute: async (runtime, options, task) => {
+    const usage = await getResourceUsage();
+    
+    if (usage.memory > 0.9) {
+      await alertAdmins("High memory usage: " + usage.memory);
+    }
+    
+    // Log metrics
+    await runtime.log({
+      entityId: runtime.agentId,
+      roomId: runtime.agentId,
+      type: "resource_usage",
+      body: usage,
+    });
+  },
+});
+
+await runtime.createTask({
+  name: "MONITOR_RESOURCES",
+  description: "Monitor system resources",
+  metadata: {
+    updatedAt: Date.now(),
+    updateInterval: 30 * 1000, // Every 30 seconds
+  },
+  tags: ["queue", "repeat", "immediate"],
+});
+```
+
+## Advanced Configuration
+
+### Custom Tick Interval
+
+The service checks for tasks every 1 second by default:
+
+```typescript
+class TaskService extends Service {
+  private readonly TICK_INTERVAL = 1000; // milliseconds
+}
+```
+
+To modify, extend the service:
+
+```typescript
+class CustomTaskService extends TaskService {
+  private readonly TICK_INTERVAL = 500; // Check every 500ms
+}
+```
+
+### Dynamic Intervals
+
+Change task intervals dynamically:
+
+```typescript
+runtime.registerTaskWorker({
+  name: "ADAPTIVE_TASK",
+  execute: async (runtime, options, task) => {
+    await doWork();
+    
+    // Adjust interval based on conditions
+    const newInterval = calculateOptimalInterval();
+    
+    if (task.id) {
+      await runtime.updateTask(task.id, {
+        metadata: {
+          ...task.metadata,
+          updateInterval: newInterval,
+        },
+      });
+    }
+  },
+});
+```
+
+### Conditional Execution
+
+```typescript
+runtime.registerTaskWorker({
+  name: "CONDITIONAL_TASK",
+  
+  validate: async (runtime, message, state) => {
+    // Complex validation logic
+    const config = await runtime.getConfig();
+    
+    // Only run if feature is enabled
+    if (!config.featureEnabled) {
+      return false;
+    }
+    
+    // Only run during business hours
+    const hour = new Date().getHours();
+    if (hour < 9 || hour > 17) {
+      return false;
+    }
+    
+    return true;
+  },
+  
+  execute: async (runtime, options, task) => {
+    // Task logic
+  },
+});
+```
+
+## Monitoring and Debugging
+
+### Logging
+
+The service provides detailed logs:
+
+```typescript
+// Task validation
+"Validating repeating test task" // { agentId }
+
+// Task execution
+"Executing task" // { agentId, taskName, taskId }
+"Task execution completed" // { agentId, taskName, taskId, durationMs }
+
+// Recurring task updates
+"Updated repeating task with new timestamp" // { agentId, taskName, taskId }
+
+// One-time task cleanup
+"Deleted non-repeating task after execution" // { agentId, taskName, taskId }
+
+// Blocking
+"Skipping task - already executing (blocking enabled)" // { agentId, taskName, taskId }
+
+// Interval elapsed
+"Executing task - interval elapsed" // { agentId, taskName, intervalMs }
+
+// Immediate execution
+"Immediately running task" // { agentId, taskName }
+
+// No worker found
+"No worker found for task type" // { agentId, taskName }
+```
+
+### Task Dashboard
+
+```typescript
+async function showTaskDashboard(runtime: IAgentRuntime) {
+  const tasks = await runtime.getTasks({ tags: ["queue"] });
+  
+  console.log(`\n=== Task Dashboard ===");
+  console.log(`Total queued tasks: ${tasks.length}\n`);
+  
+  for (const task of tasks) {
+    const isRecurring = task.tags?.includes("repeat");
+    const interval = task.metadata?.updateInterval as number | undefined;
+    const lastRun = task.metadata?.updatedAt as number | undefined;
+    const nextRun = lastRun && interval ? lastRun + interval : undefined;
+    const timeUntilNext = nextRun ? nextRun - Date.now() : undefined;
+    
+    console.log(`Task: ${task.name}`);
+    console.log(`  Description: ${task.description}`);
+    console.log(`  Type: ${isRecurring ? 'Recurring' : 'One-time'}`);
+    
+    if (interval) {
+      console.log(`  Interval: ${interval / 1000}s`);
+    }
+    
+    if (timeUntilNext !== undefined) {
+      if (timeUntilNext <= 0) {
+        console.log(`  Next run: Ready to execute`);
+      } else {
+        console.log(`  Next run: in ${Math.floor(timeUntilNext / 1000)}s`);
+      }
+    } else {
+      console.log(`  Next run: Immediate`);
+    }
+    
+    console.log("");
+  }
+}
+```
+
+## Best Practices
+
+### Task Design
+
+- **Clear naming**: Use descriptive, unique task names
+- **Idempotency**: Design tasks to be safely re-run
+- **Error handling**: Catch and log errors within workers
+- **Appropriate intervals**: Don't over-schedule tasks
+
+### Performance
+
+- Use blocking mode for resource-intensive tasks
+- Set reasonable intervals (avoid sub-second for most tasks)
+- Validate efficiently (validation runs every tick)
+- Clean up one-time tasks promptly
+
+### Reliability
+
+- Always include error handling in workers
+- Log task execution for audit trails
+- Use validation to prevent execution in bad states
+- Monitor task completion times
+
+### Resource Management
+
+- Be mindful of blocking vs non-blocking
+- Limit concurrent task execution if needed
+- Clean up resources in finally blocks
+- Monitor executingTasks set size
+
+## Troubleshooting
+
+### Task Not Executing
+
+1. Verify task has `"queue"` tag
+2. Check if worker is registered for task name
+3. Review validate() function (may be returning false)
+4. Check if blocking is preventing execution
+5. Verify interval has elapsed for recurring tasks
+
+### Task Executing Too Often
+
+1. Check updateInterval value
+2. Verify updatedAt is being set correctly
+3. Ensure blocking is enabled if needed
+4. Review TICK_INTERVAL setting
+
+### Task Validation Always Failing
+
+1. Add logging to validate() function
+2. Check validation logic for errors
+3. Verify runtime state is correct
+4. Test validation conditions independently
+
+### Memory Growing
+
+1. Ensure one-time tasks are being deleted
+2. Check for orphaned tasks (no worker)
+3. Monitor executingTasks set
+4. Review task metadata size
+
+## Related
+
+- [Approval Service](/api/services/approval-service)
+- [Message Service](/api/services/message-service)
+- [Actions](/api/actions)
+- [Task System Guide](/guides/tasks)

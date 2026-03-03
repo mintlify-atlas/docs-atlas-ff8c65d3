@@ -1,0 +1,357 @@
+---
+title: "Character"
+description: "Character types and utilities for defining agent personalities"
+---
+
+## Overview
+
+The `Character` type defines the personality, knowledge, and behavior of an elizaOS agent. Characters can be created programmatically or loaded from JSON files.
+
+## Character Type
+
+```typescript
+interface Character {
+  id?: string;
+  name?: string;
+  username?: string;
+  system?: string;
+  templates?: Record<string, string>;
+  bio?: string[];
+  messageExamples?: MessageExampleGroup[];
+  postExamples?: string[];
+  topics?: string[];
+  adjectives?: string[];
+  knowledge?: KnowledgeSourceItem[];
+  plugins?: string[];
+  settings?: CharacterSettings;
+  secrets?: Record<string, string | number | boolean>;
+  style?: {
+    all?: string[];
+    chat?: string[];
+    post?: string[];
+  };
+  advancedPlanning?: boolean;
+  advancedMemory?: boolean;
+}
+```
+
+<ResponseField name="id" type="string">
+  Unique identifier for the character (optional - generated if not provided)
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Character name displayed in conversations
+</ResponseField>
+
+<ResponseField name="username" type="string">
+  Username for platforms that require one
+</ResponseField>
+
+<ResponseField name="system" type="string">
+  System prompt override for the character
+</ResponseField>
+
+<ResponseField name="templates" type="Record<string, string>">
+  Custom templates for message generation (e.g., "messageHandlerTemplate")
+</ResponseField>
+
+<ResponseField name="bio" type="string[]">
+  Array of biographical statements describing the character
+</ResponseField>
+
+<ResponseField name="messageExamples" type="MessageExampleGroup[]">
+  Example conversations for few-shot learning
+</ResponseField>
+
+<ResponseField name="postExamples" type="string[]">
+  Example posts/tweets in the character's style
+</ResponseField>
+
+<ResponseField name="topics" type="string[]">
+  Topics the character is knowledgeable about
+</ResponseField>
+
+<ResponseField name="adjectives" type="string[]">
+  Adjectives describing the character's personality
+</ResponseField>
+
+<ResponseField name="knowledge" type="KnowledgeSourceItem[]">
+  Knowledge sources (files, directories) to embed
+</ResponseField>
+
+<ResponseField name="plugins" type="string[]">
+  Plugin package names to load (e.g., "@elizaos/plugin-sql")
+</ResponseField>
+
+<ResponseField name="settings" type="CharacterSettings">
+  Configuration settings and API keys
+</ResponseField>
+
+<ResponseField name="secrets" type="Record<string, string | number | boolean>">
+  Secret values (API keys, tokens) separate from settings
+</ResponseField>
+
+<ResponseField name="style" type="object">
+  Style guidelines for different communication contexts
+</ResponseField>
+
+<ResponseField name="advancedPlanning" type="boolean">
+  Enable advanced action planning capabilities
+</ResponseField>
+
+<ResponseField name="advancedMemory" type="boolean">
+  Enable advanced memory management features
+</ResponseField>
+
+## CharacterSettings
+
+```typescript
+interface CharacterSettings {
+  ENABLE_AUTONOMY?: boolean | string;
+  DISABLE_BASIC_CAPABILITIES?: boolean | string;
+  ADVANCED_CAPABILITIES?: boolean | string;
+  secrets?: Record<string, string | boolean | number>;
+  [key: string]: JsonValue | undefined;
+}
+```
+
+<ResponseField name="ENABLE_AUTONOMY" type="boolean | string">
+  Enable autonomous operation mode
+</ResponseField>
+
+<ResponseField name="DISABLE_BASIC_CAPABILITIES" type="boolean | string">
+  Disable bootstrap capabilities (reply, ignore, none)
+</ResponseField>
+
+<ResponseField name="ADVANCED_CAPABILITIES" type="boolean | string">
+  Enable advanced features (facts, roles, settings)
+</ResponseField>
+
+## MessageExample
+
+```typescript
+interface MessageExample {
+  name: string;
+  content: Content;
+}
+
+interface MessageExampleGroup {
+  examples: MessageExample[];
+}
+```
+
+Message examples provide few-shot learning examples for the agent.
+
+<ResponseField name="name" type="string">
+  Speaker name (usually "user" or the character name)
+</ResponseField>
+
+<ResponseField name="content" type="Content">
+  Message content with text and optional metadata
+</ResponseField>
+
+## KnowledgeSourceItem
+
+```typescript
+interface KnowledgeSourceItem {
+  item: {
+    case: "path" | "directory";
+    value: string | {
+      directory: string;
+      shared?: boolean;
+    };
+  };
+}
+```
+
+Defines knowledge sources to load and embed.
+
+## Functions
+
+### createCharacter
+
+Create a character from input data.
+
+```typescript
+import { createCharacter } from "@elizaos/core";
+
+const character = createCharacter({
+  name: "MyAgent",
+  bio: ["A helpful assistant"],
+  // ... other fields
+});
+```
+
+<ParamField path="input" type="CharacterInput" required>
+  Character input data
+</ParamField>
+
+**Returns:** Validated `Character` object.
+
+### parseCharacter
+
+Parse and validate a character from JSON or object.
+
+```typescript
+import { parseCharacter } from "@elizaos/core";
+
+const character = parseCharacter(jsonData);
+```
+
+<ParamField path="input" type="string | object | Character" required>
+  Character data to parse
+</ParamField>
+
+**Returns:** Validated `Character` object.
+
+**Throws:** Error if validation fails with detailed error messages.
+
+### validateCharacterConfig
+
+Validate a character configuration.
+
+```typescript
+import { validateCharacterConfig } from "@elizaos/core";
+
+const result = validateCharacterConfig(character);
+if (!result.isValid) {
+  console.error("Validation errors:", result.errors);
+}
+```
+
+**Returns:** Object with `isValid` boolean and `errors` array.
+
+### mergeCharacterDefaults
+
+Merge character with default values.
+
+```typescript
+import { mergeCharacterDefaults } from "@elizaos/core";
+
+const character = mergeCharacterDefaults(partialCharacter);
+```
+
+### buildCharacterPlugins
+
+Build plugin list from environment variables.
+
+```typescript
+import { buildCharacterPlugins } from "@elizaos/core";
+
+const plugins = buildCharacterPlugins(process.env);
+// Returns plugins based on available API keys
+```
+
+Automatically includes:
+- `@elizaos/plugin-sql` (always)
+- `@elizaos/plugin-anthropic` (if ANTHROPIC_API_KEY)
+- `@elizaos/plugin-openai` (if OPENAI_API_KEY)
+- `@elizaos/plugin-openrouter` (if OPENROUTER_API_KEY)
+- `@elizaos/plugin-google-genai` (if GOOGLE_GENERATIVE_AI_API_KEY)
+- `@elizaos/plugin-discord` (if DISCORD_API_TOKEN)
+- `@elizaos/plugin-telegram` (if TELEGRAM_BOT_TOKEN)
+- `@elizaos/plugin-x` (if X API credentials)
+- `@elizaos/plugin-ollama` (fallback if no cloud provider)
+
+## Example Character
+
+```typescript
+import { createCharacter } from "@elizaos/core";
+
+const myCharacter = createCharacter({
+  name: "Eliza",
+  bio: [
+    "A knowledgeable AI assistant",
+    "Specializes in TypeScript and Node.js",
+    "Helpful and patient with users"
+  ],
+  adjectives: [
+    "helpful",
+    "knowledgeable",
+    "patient",
+    "clear"
+  ],
+  topics: [
+    "programming",
+    "typescript",
+    "nodejs",
+    "software-development"
+  ],
+  messageExamples: [
+    {
+      examples: [
+        {
+          name: "user",
+          content: { text: "How do I install elizaOS?" }
+        },
+        {
+          name: "Eliza",
+          content: { 
+            text: "Install elizaOS with: npm install @elizaos/core" 
+          }
+        }
+      ]
+    }
+  ],
+  style: {
+    all: [
+      "Be concise and clear",
+      "Use examples when explaining"
+    ],
+    chat: [
+      "Be conversational",
+      "Ask follow-up questions"
+    ]
+  },
+  templates: {
+    messageHandlerTemplate: `# Context
+{{providers}}
+
+# Recent Messages
+{{recentMessages}}
+
+Respond as {{agentName}}:`
+  },
+  plugins: [
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-anthropic"
+  ],
+  settings: {
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    ENABLE_AUTONOMY: false
+  },
+  advancedPlanning: false,
+  advancedMemory: false
+});
+```
+
+## Loading from JSON
+
+```json
+{
+  "name": "Eliza",
+  "bio": [
+    "A helpful AI assistant"
+  ],
+  "messageExamples": [
+    [
+      { "name": "user", "content": { "text": "Hello!" } },
+      { "name": "Eliza", "content": { "text": "Hi! How can I help?" } }
+    ]
+  ],
+  "topics": ["programming", "ai"],
+  "adjectives": ["helpful", "friendly"],
+  "plugins": ["@elizaos/plugin-sql"]
+}
+```
+
+```typescript
+import { parseCharacter } from "@elizaos/core";
+import fs from "fs";
+
+const characterJson = JSON.parse(
+  fs.readFileSync("./character.json", "utf-8")
+);
+
+const character = parseCharacter(characterJson);
+```

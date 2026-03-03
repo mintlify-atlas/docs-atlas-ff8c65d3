@@ -1,0 +1,310 @@
+---
+title: Update Agent
+description: Modify an existing agent's configuration
+api: PUT /agents/{agentId}
+---
+
+## Endpoint
+
+```
+PUT /agents/{agentId}
+```
+
+Updates an existing agent's character configuration, settings, or status. You can modify any aspect of the agent without recreating it.
+
+## Request
+
+### Path Parameters
+
+<ParamField path="agentId" type="string" required>
+  Unique identifier (UUID) of the agent to update
+</ParamField>
+
+### Headers
+
+<ParamField header="Content-Type" type="string" required>
+  Must be `application/json`
+</ParamField>
+
+<ParamField header="Authorization" type="string">
+  Bearer token for authentication (if required)
+</ParamField>
+
+### Body Parameters
+
+All parameters are optional. Only include fields you want to update.
+
+<ParamField body="name" type="string">
+  New name for the agent's character
+</ParamField>
+
+<ParamField body="bio" type="string">
+  Updated biography or description
+</ParamField>
+
+<ParamField body="lore" type="array">
+  Updated background story elements
+</ParamField>
+
+<ParamField body="topics" type="array">
+  Updated list of topics
+</ParamField>
+
+<ParamField body="adjectives" type="array">
+  Updated personality adjectives
+</ParamField>
+
+<ParamField body="style" type="object">
+  Updated communication style settings
+</ParamField>
+
+<ParamField body="settings" type="object">
+  Updated configuration settings
+</ParamField>
+
+<ParamField body="plugins" type="array">
+  Updated list of enabled plugins
+</ParamField>
+
+<ParamField body="enabled" type="boolean">
+  Enable or disable the agent
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the update was successful
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+  Updated agent details
+  
+  <ResponseField name="data.agentId" type="string" required>
+    Unique identifier for the agent (UUID)
+  </ResponseField>
+  
+  <ResponseField name="data.name" type="string" required>
+    Updated name of the agent
+  </ResponseField>
+  
+  <ResponseField name="data.updatedAt" type="number">
+    Unix timestamp when the agent was updated
+  </ResponseField>
+</ResponseField>
+
+## Examples
+
+### Update Agent Name
+
+```bash
+curl -X PUT http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Alice 2.0"
+  }'
+```
+
+### Update Multiple Fields
+
+```bash
+curl -X PUT http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "bio": "An advanced AI assistant with enhanced capabilities",
+    "topics": [
+      "customer support",
+      "technical troubleshooting",
+      "product recommendations"
+    ],
+    "adjectives": [
+      "expert",
+      "efficient",
+      "proactive"
+    ]
+  }'
+```
+
+### Update Settings
+
+```bash
+curl -X PUT http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "settings": {
+      "model": "gpt-4-turbo",
+      "temperature": 0.7,
+      "maxTokens": 2000
+    }
+  }'
+```
+
+### Disable Agent
+
+```bash
+curl -X PUT http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "enabled": false
+  }'
+```
+
+## Response Example
+
+### Success Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "agentId": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "Alice 2.0",
+    "updatedAt": 1709683200000
+  }
+}
+```
+
+## Code Examples
+
+### JavaScript/Node.js
+
+```javascript
+const agentId = "550e8400-e29b-41d4-a716-446655440000";
+
+const updates = {
+  bio: "An advanced AI assistant",
+  topics: ["customer support", "technical help"],
+  adjectives: ["expert", "helpful"]
+};
+
+const response = await fetch(`http://localhost:3000/agents/${agentId}`, {
+  method: 'PUT',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify(updates)
+});
+
+const { success, data } = await response.json();
+
+if (success) {
+  console.log(`Agent updated: ${data.name}`);
+}
+```
+
+### Python
+
+```python
+import requests
+
+agent_id = "550e8400-e29b-41d4-a716-446655440000"
+
+updates = {
+    "bio": "An advanced AI assistant",
+    "topics": ["customer support", "technical help"],
+    "adjectives": ["expert", "helpful"]
+}
+
+response = requests.put(
+    f'http://localhost:3000/agents/{agent_id}',
+    json=updates
+)
+
+data = response.json()
+
+if data['success']:
+    print(f"Agent updated: {data['data']['name']}")
+```
+
+### TypeScript
+
+```typescript
+interface UpdateAgentRequest {
+  name?: string;
+  bio?: string;
+  lore?: string[];
+  topics?: string[];
+  adjectives?: string[];
+  style?: Record<string, any>;
+  settings?: Record<string, any>;
+  plugins?: string[];
+  enabled?: boolean;
+}
+
+interface UpdateAgentResponse {
+  success: boolean;
+  data: {
+    agentId: string;
+    name: string;
+    updatedAt: number;
+  };
+}
+
+const agentId = "550e8400-e29b-41d4-a716-446655440000";
+
+const updates: UpdateAgentRequest = {
+  bio: "An advanced AI assistant",
+  topics: ["customer support", "technical help"]
+};
+
+const response = await fetch(`http://localhost:3000/agents/${agentId}`, {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(updates)
+});
+
+const result: UpdateAgentResponse = await response.json();
+```
+
+## Error Responses
+
+### 404 Not Found
+
+```json
+{
+  "success": false,
+  "error": "Agent not found"
+}
+```
+
+### 400 Bad Request
+
+```json
+{
+  "success": false,
+  "error": "Invalid agent ID format"
+}
+```
+
+### 500 Internal Server Error
+
+```json
+{
+  "success": false,
+  "error": "Failed to update agent"
+}
+```
+
+## Important Notes
+
+<Note>
+If the agent is currently running, some changes may require restarting the agent to take effect. Consider stopping and restarting the agent after significant configuration changes.
+</Note>
+
+<Warning>
+Updating the agent's model or embedding model may require re-processing existing memories and embeddings.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Get Agent" icon="info" href="/rest/agents/get">
+    View updated agent details
+  </Card>
+  <Card title="Start Agent" icon="play" href="/rest/agents/start">
+    Restart the agent with new configuration
+  </Card>
+  <Card title="Delete Agent" icon="trash" href="/rest/agents/delete">
+    Remove the agent permanently
+  </Card>
+</CardGroup>

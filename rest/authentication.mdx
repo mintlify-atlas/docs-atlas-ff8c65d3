@@ -1,0 +1,181 @@
+---
+title: Authentication
+description: Secure your API requests with authentication
+---
+
+## Overview
+
+elizaOS supports multiple authentication methods to secure API access. Authentication ensures that only authorized users and applications can interact with your agents.
+
+## Authentication Methods
+
+### API Key Authentication
+
+The primary authentication method uses API keys passed in request headers.
+
+#### Using API Keys
+
+Include your API key in the `Authorization` header:
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  http://localhost:3000/agents
+```
+
+#### Setting API Keys
+
+Configure API keys in your character's settings:
+
+```json
+{
+  "name": "MyAgent",
+  "settings": {
+    "secrets": {
+      "API_KEY": "your-secret-api-key"
+    }
+  }
+}
+```
+
+### No Authentication (Development)
+
+For local development and testing, you can run elizaOS without authentication:
+
+```bash
+# No authentication required for local development
+curl http://localhost:3000/agents
+```
+
+<Warning>
+Never disable authentication in production environments. Always secure your APIs with proper authentication.
+</Warning>
+
+## Request Headers
+
+### Required Headers
+
+<ParamField header="Content-Type" type="string" required>
+  Set to `application/json` for all POST, PUT, and PATCH requests
+</ParamField>
+
+### Optional Headers
+
+<ParamField header="Authorization" type="string">
+  Bearer token for authentication: `Bearer YOUR_API_KEY`
+</ParamField>
+
+<ParamField header="X-Agent-ID" type="string">
+  Target a specific agent by ID
+</ParamField>
+
+## Authentication Examples
+
+### Node.js
+
+```javascript
+const fetch = require('node-fetch');
+
+const response = await fetch('http://localhost:3000/agents', {
+  headers: {
+    'Authorization': 'Bearer YOUR_API_KEY',
+    'Content-Type': 'application/json'
+  }
+});
+
+const data = await response.json();
+console.log(data);
+```
+
+### Python
+
+```python
+import requests
+
+headers = {
+    'Authorization': 'Bearer YOUR_API_KEY',
+    'Content-Type': 'application/json'
+}
+
+response = requests.get('http://localhost:3000/agents', headers=headers)
+data = response.json()
+print(data)
+```
+
+### cURL
+
+```bash
+curl -X GET http://localhost:3000/agents \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json"
+```
+
+## Security Best Practices
+
+### Store Keys Securely
+
+Never hardcode API keys in your source code. Use environment variables:
+
+```bash
+export ELIZA_API_KEY="your-api-key"
+```
+
+Then reference them in your code:
+
+```javascript
+const apiKey = process.env.ELIZA_API_KEY;
+```
+
+### Rotate Keys Regularly
+
+Change your API keys periodically to minimize security risks:
+
+1. Generate a new API key
+2. Update your applications to use the new key
+3. Revoke the old key after migration
+
+### Use HTTPS in Production
+
+Always use HTTPS in production to encrypt API requests:
+
+```bash
+https://your-domain.com/agents
+```
+
+### Implement Rate Limiting
+
+Protect your API from abuse by implementing rate limiting at the reverse proxy or application level.
+
+## Error Handling
+
+### 401 Unauthorized
+
+Returned when authentication credentials are missing or invalid:
+
+```json
+{
+  "success": false,
+  "error": "Authentication required"
+}
+```
+
+### 403 Forbidden
+
+Returned when authentication succeeds but the user lacks permissions:
+
+```json
+{
+  "success": false,
+  "error": "Insufficient permissions"
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="List Agents" icon="list" href="/rest/agents/list">
+    Start making authenticated API requests
+  </Card>
+  <Card title="Send Message" icon="paper-plane" href="/rest/messaging/send-message">
+    Send your first message to an agent
+  </Card>
+</CardGroup>

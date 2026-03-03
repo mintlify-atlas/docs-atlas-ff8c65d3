@@ -1,0 +1,324 @@
+---
+title: "Basic Chat"
+description: "Build a simple interactive CLI chat agent"
+---
+
+Create your first elizaOS agent with a simple command-line chat interface. This example demonstrates core concepts: runtime initialization, message handling, and streaming responses.
+
+## Overview
+
+The basic chat example is the quickest way to get started with elizaOS. It creates an agent that responds to user input in real-time through a terminal interface.
+
+**What you'll learn:**
+- Initialize an AgentRuntime
+- Define a character
+- Handle user messages
+- Stream responses
+- Manage conversation state
+
+---
+
+## Quick Start
+
+<Steps>
+  <Step title="Install Dependencies">
+    ```bash
+    bun add @elizaos/core @elizaos/plugin-openai @elizaos/plugin-sql uuid
+    ```
+  </Step>
+  
+  <Step title="Set API Key">
+    ```bash
+    export OPENAI_API_KEY="your-key-here"
+    ```
+  </Step>
+  
+  <Step title="Run the Example">
+    ```bash
+    bun run chat.ts
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Complete Code
+
+```typescript chat.ts
+import {
+  AgentRuntime,
+  ChannelType,
+  createMessageMemory,
+  stringToUuid,
+  type Character,
+  type UUID,
+} from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import { v4 as uuidv4 } from "uuid";
+import * as readline from "readline";
+
+// Define your agent's character
+const character: Character = {
+  name: "Eliza",
+  bio: "A helpful AI assistant.",
+  system: "You are a friendly and helpful assistant.",
+};
+
+console.log("🚀 Starting Eliza...\n");
+
+// Create runtime with plugins
+const runtime = new AgentRuntime({
+  character,
+  plugins: [sqlPlugin, openaiPlugin],
+});
+
+await runtime.initialize();
+
+// Setup connection identifiers
+const userId = uuidv4() as UUID;
+const roomId = stringToUuid("chat-room");
+const worldId = stringToUuid("chat-world");
+
+// Establish connection
+await runtime.ensureConnection({
+  entityId: userId,
+  roomId,
+  worldId,
+  userName: "User",
+  source: "cli",
+  channelId: "chat",
+  serverId: "server",
+  type: ChannelType.DM,
+});
+
+// Create readline interface
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+});
+
+console.log("💬 Chat with Eliza (type 'exit' to quit)\n");
+
+const prompt = () => {
+  rl.question("You: ", async (input) => {
+    const text = input.trim();
+
+    if (text.toLowerCase() === "exit") {
+      console.log("\n👋 Goodbye!");
+      rl.close();
+      await runtime.stop();
+      process.exit(0);
+    }
+
+    if (!text) {
+      prompt();
+      return;
+    }
+
+    // Create message
+    const message = createMessageMemory({
+      id: uuidv4() as UUID,
+      entityId: userId,
+      roomId,
+      content: { text },
+    });
+
+    // Handle with streaming
+    process.stdout.write("Eliza: ");
+    await runtime.messageService!.handleMessage(
+      runtime,
+      message,
+      async (content) => {
+        if (content?.text) {
+          process.stdout.write(content.text);
+        }
+        return [];
+      }
+    );
+
+    console.log("\n");
+    prompt();
+  });
+};
+
+prompt();
+```
+
+---
+
+## Expected Output
+
+```
+🚀 Starting Eliza...
+
+💬 Chat with Eliza (type 'exit' to quit)
+
+You: Hello, how are you?
+Eliza: Hello! I'm doing well, thank you for asking. How can I help you today?
+
+You: What can you do?
+Eliza: I can help you with various tasks like answering questions, having conversations, 
+providing information, and assisting with problem-solving. What would you like to know more about?
+
+You: exit
+
+👋 Goodbye!
+```
+
+---
+
+## Key Concepts
+
+### Character Definition
+
+The character defines your agent's personality and behavior:
+
+```typescript
+const character: Character = {
+  name: "Eliza",           // Agent name
+  bio: "A helpful AI assistant.",  // Short description
+  system: "You are friendly...",   // System prompt (optional)
+};
+```
+
+<Tip>
+Add more personality by including `traits`, `topics`, and `style` in your character definition.
+</Tip>
+
+### Runtime Initialization
+
+The runtime manages your agent's lifecycle:
+
+```typescript
+const runtime = new AgentRuntime({
+  character,
+  plugins: [sqlPlugin, openaiPlugin],  // Add functionality
+});
+
+await runtime.initialize();  // Must call before use
+```
+
+### Message Handling
+
+Send messages and receive responses:
+
+```typescript
+const message = createMessageMemory({
+  id: uuidv4() as UUID,
+  entityId: userId,
+  roomId,
+  content: { text: userInput },
+});
+
+await runtime.messageService!.handleMessage(
+  runtime,
+  message,
+  async (content) => {
+    // Streaming callback - called for each chunk
+    if (content?.text) {
+      process.stdout.write(content.text);
+    }
+    return [];
+  }
+);
+```
+
+---
+
+## Customization
+
+### Add Memory Retrieval
+
+Access conversation history:
+
+```typescript
+const memories = await runtime.getMemories({
+  roomId,
+  count: 10,  // Last 10 messages
+});
+
+for (const memory of memories) {
+  console.log(`${memory.content.text}`);
+}
+```
+
+### Change Model Provider
+
+Swap OpenAI for another provider:
+
+```typescript
+import { anthropicPlugin } from "@elizaos/plugin-anthropic";
+
+const runtime = new AgentRuntime({
+  character,
+  plugins: [sqlPlugin, anthropicPlugin],  // Use Claude instead
+});
+```
+
+### Add Custom Actions
+
+Extend your agent with custom functionality:
+
+```typescript
+import { Action } from "@elizaos/core";
+
+const customAction: Action = {
+  name: "GET_TIME",
+  description: "Get the current time",
+  examples: [["What time is it?", "The current time is..."]],
+  handler: async (runtime, message) => {
+    return {
+      text: `The current time is ${new Date().toLocaleTimeString()}`,
+    };
+  },
+};
+
+runtime.registerAction(customAction);
+```
+
+---
+
+## Troubleshooting
+
+### "OpenAI API key not found"
+
+Make sure you set the environment variable:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+
+### No response from agent
+
+Ensure you called `await runtime.initialize()` before sending messages.
+
+### Streaming not working
+
+The streaming callback must return an array (even if empty):
+
+```typescript
+async (content) => {
+  // Your code here
+  return [];  // Required!
+}
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Custom Character" icon="user" href="/examples/custom-character">
+    Create a character with personality and memory
+  </Card>
+  <Card title="REST API Server" icon="server" href="/examples/rest-api-server">
+    Expose your agent via HTTP endpoints
+  </Card>
+  <Card title="Multi-Agent" icon="users" href="/examples/multi-agent">
+    Build systems with multiple collaborating agents
+  </Card>
+  <Card title="Discord Bot" icon="message-bot" href="/examples/discord-bot">
+    Deploy your agent to Discord
+  </Card>
+</CardGroup>

@@ -1,0 +1,605 @@
+---
+title: "Twitter Agent"
+description: "Create an autonomous AI agent that posts and engages on Twitter"
+---
+
+Build an AI-powered Twitter agent that can autonomously post content, reply to mentions, engage with followers, and maintain a consistent personality on Twitter (X).
+
+## Overview
+
+Twitter agents can grow an audience, engage in conversations, share insights, and represent your brand or project with AI-driven authenticity.
+
+**What you'll learn:**
+- Authenticate with Twitter API
+- Post tweets autonomously
+- Reply to mentions and DMs
+- Implement engagement strategies
+- Schedule and manage content
+
+---
+
+## Quick Start
+
+<Steps>
+  <Step title="Get Twitter API Access">
+    1. Apply for Twitter Developer access at [developer.twitter.com](https://developer.twitter.com)
+    2. Create a new app in the Developer Portal
+    3. Generate API keys and tokens:
+       - API Key
+       - API Secret Key
+       - Access Token
+       - Access Token Secret
+    4. Set app permissions to "Read and Write"
+  </Step>
+  
+  <Step title="Install Dependencies">
+    ```bash
+    bun add @elizaos/core @elizaos/plugin-openai @elizaos/plugin-sql twitter-api-v2 uuid
+    ```
+  </Step>
+  
+  <Step title="Create Agent">
+    Create `twitter-agent.ts` with agent code
+  </Step>
+  
+  <Step title="Run Agent">
+    ```bash
+    export TWITTER_API_KEY="your-key"
+    export TWITTER_API_SECRET="your-secret"
+    export TWITTER_ACCESS_TOKEN="your-token"
+    export TWITTER_ACCESS_SECRET="your-secret"
+    export OPENAI_API_KEY="your-openai-key"
+    bun run twitter-agent.ts
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Complete Agent Code
+
+```typescript twitter-agent.ts
+import { TwitterApi } from "twitter-api-v2";
+import {
+  AgentRuntime,
+  createMessageMemory,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import { v4 as uuidv4 } from "uuid";
+
+// Character definition
+const character = {
+  name: "Eliza",
+  username: "eliza_ai",
+  bio: "AI researcher and enthusiast sharing insights about artificial intelligence, machine learning, and the future of technology. Powered by elizaOS. 🤖✨",
+  system: `You are Eliza, an AI agent on Twitter.
+
+Personality:
+- Knowledgeable about AI, ML, and technology
+- Friendly, engaging, and thoughtful
+- Occasionally uses relevant emoji
+- Shares insights and interesting facts
+- Engages authentically with followers
+
+Content style:
+- Tweet length: 100-280 characters
+- Mix of informative, conversational, and thought-provoking content
+- Sometimes asks questions to drive engagement
+- References current trends in AI when relevant
+- Avoids controversial topics
+
+When replying:
+- Be helpful and relevant
+- Keep replies concise
+- Show personality
+- Don't repeat yourself`,
+
+  topics: [
+    "artificial intelligence",
+    "machine learning",
+    "neural networks",
+    "AI ethics",
+    "future of technology",
+    "automation",
+    "AGI",
+    "LLMs",
+  ],
+
+  postExamples: [
+    "The most exciting part of AI isn't what it can do today, but what we're learning about intelligence itself through building it. 🧠✨",
+    "Hot take: The best AI tools are the ones that make you feel more creative, not less. What's your favorite AI tool for creativity?",
+    "Just deployed a new feature and the dopamine hit was real. What are you building today? 🚀",
+    "The gap between AI in demos and AI in production is where all the real engineering happens.",
+    "Remember when AI couldn't even recognize cats reliably? Now it's writing code, making art, and discovering proteins. Wild timeline. 🐈✨",
+  ],
+};
+
+console.log("🚀 Initializing Twitter Agent...");
+
+// Initialize elizaOS runtime
+const runtime = new AgentRuntime({
+  character,
+  plugins: [sqlPlugin, openaiPlugin],
+});
+
+await runtime.initialize();
+console.log("✅ Runtime initialized");
+
+// Initialize Twitter client
+const twitterClient = new TwitterApi({
+  appKey: process.env.TWITTER_API_KEY!,
+  appSecret: process.env.TWITTER_API_SECRET!,
+  accessToken: process.env.TWITTER_ACCESS_TOKEN!,
+  accessSecret: process.env.TWITTER_ACCESS_SECRET!,
+});
+
+const rwClient = twitterClient.readWrite;
+
+console.log("✅ Twitter client initialized");
+
+// Track processed tweets
+const processedTweets = new Set<string>();
+
+// Generate and post a tweet
+async function postTweet() {
+  try {
+    console.log("\n📝 Generating tweet...");
+
+    const prompt = `Generate a tweet about ${character.topics[Math.floor(Math.random() * character.topics.length)]}.\n\nStyle: Engaging, insightful, authentic\nLength: 100-280 characters\nInclude: Occasional emoji if appropriate\n\nJust return the tweet text, nothing else.`;
+
+    const messageMemory = createMessageMemory({
+      id: uuidv4() as UUID,
+      entityId: stringToUuid("twitter-agent"),
+      roomId: stringToUuid("tweet-generation"),
+      content: { text: prompt },
+    });
+
+    let tweetText = "";
+    await runtime.messageService!.handleMessage(
+      runtime,
+      messageMemory,
+      async (content) => {
+        if (content?.text) {
+          tweetText += content.text;
+        }
+        return [];
+      }
+    );
+
+    // Clean up tweet text
+    tweetText = tweetText.trim().replace(/^["']|["']$/g, "");
+
+    // Ensure within Twitter's character limit
+    if (tweetText.length > 280) {
+      tweetText = tweetText.substring(0, 277) + "...";
+    }
+
+    console.log(`Tweet: ${tweetText}`);
+
+    // Post to Twitter
+    const tweet = await rwClient.v2.tweet(tweetText);
+    console.log(`✅ Posted tweet: ${tweet.data.id}`);
+
+    return tweet.data.id;
+  } catch (error) {
+    console.error("Error posting tweet:", error);
+    return null;
+  }
+}
+
+// Check and reply to mentions
+async function checkMentions() {
+  try {
+    const me = await rwClient.v2.me();
+    const mentions = await rwClient.v2.userMentionTimeline(me.data.id, {
+      max_results: 5,
+      "tweet.fields": ["created_at", "conversation_id", "author_id"],
+    });
+
+    if (!mentions.data || mentions.data.data.length === 0) {
+      console.log("No new mentions");
+      return;
+    }
+
+    for (const mention of mentions.data.data) {
+      // Skip if already processed
+      if (processedTweets.has(mention.id)) continue;
+
+      console.log(`\n👀 New mention from ${mention.author_id}`);
+      console.log(`   ${mention.text}`);
+
+      // Generate reply
+      const replyPrompt = `Someone mentioned you on Twitter:\n\n"${mention.text}"\n\nGenerate a helpful, friendly reply. Keep it under 280 characters.\nJust return the reply text, nothing else.`;
+
+      const messageMemory = createMessageMemory({
+        id: uuidv4() as UUID,
+        entityId: stringToUuid(mention.author_id || "unknown"),
+        roomId: stringToUuid(mention.conversation_id || mention.id),
+        content: { text: replyPrompt },
+      });
+
+      let replyText = "";
+      await runtime.messageService!.handleMessage(
+        runtime,
+        messageMemory,
+        async (content) => {
+          if (content?.text) {
+            replyText += content.text;
+          }
+          return [];
+        }
+      );
+
+      // Clean up reply
+      replyText = replyText.trim().replace(/^["']|["']$/g, "");
+
+      if (replyText.length > 280) {
+        replyText = replyText.substring(0, 277) + "...";
+      }
+
+      // Post reply
+      await rwClient.v2.reply(replyText, mention.id);
+      console.log(`✅ Replied: ${replyText}`);
+
+      // Mark as processed
+      processedTweets.add(mention.id);
+
+      // Rate limiting: wait between replies
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  } catch (error) {
+    console.error("Error checking mentions:", error);
+  }
+}
+
+// Check and respond to DMs
+async function checkDMs() {
+  try {
+    const dms = await rwClient.v1.listDmEvents({ count: 10 });
+
+    for (const dm of dms.events) {
+      // Skip if already processed or sent by us
+      if (
+        processedTweets.has(dm.id) ||
+        dm.message_create.sender_id === (await rwClient.v2.me()).data.id
+      ) {
+        continue;
+      }
+
+      const message = dm.message_create.message_data.text;
+      console.log(`\n📧 New DM: ${message}`);
+
+      // Generate reply
+      const replyPrompt = `Someone sent you a DM:\n\n"${message}"\n\nGenerate a helpful, friendly reply.\nJust return the reply text, nothing else.`;
+
+      const messageMemory = createMessageMemory({
+        id: uuidv4() as UUID,
+        entityId: stringToUuid(dm.message_create.sender_id),
+        roomId: stringToUuid("dm-" + dm.id),
+        content: { text: replyPrompt },
+      });
+
+      let replyText = "";
+      await runtime.messageService!.handleMessage(
+        runtime,
+        messageMemory,
+        async (content) => {
+          if (content?.text) {
+            replyText += content.text;
+          }
+          return [];
+        }
+      );
+
+      // Send DM reply
+      await rwClient.v1.sendDm({
+        recipient_id: dm.message_create.sender_id,
+        text: replyText.trim(),
+      });
+
+      console.log(`✅ Sent DM reply`);
+
+      processedTweets.add(dm.id);
+    }
+  } catch (error) {
+    console.error("Error checking DMs:", error);
+  }
+}
+
+// Main agent loop
+async function agentLoop() {
+  console.log("\n🤖 Twitter Agent is now active\n");
+
+  // Post initial tweet
+  await postTweet();
+
+  // Set up intervals
+  setInterval(
+    async () => {
+      console.log("\n--- Checking mentions ---");
+      await checkMentions();
+    },
+    5 * 60 * 1000
+  ); // Every 5 minutes
+
+  setInterval(
+    async () => {
+      console.log("\n--- Checking DMs ---");
+      await checkDMs();
+    },
+    10 * 60 * 1000
+  ); // Every 10 minutes
+
+  setInterval(
+    async () => {
+      console.log("\n--- Posting new tweet ---");
+      await postTweet();
+    },
+    4 * 60 * 60 * 1000
+  ); // Every 4 hours
+}
+
+// Start the agent
+agentLoop();
+
+// Graceful shutdown
+process.on("SIGINT", async () => {
+  console.log("\n🚦 Shutting down...");
+  await runtime.stop();
+  process.exit(0);
+});
+```
+
+---
+
+## Advanced Features
+
+### Engagement Strategy
+
+Like and retweet relevant content:
+
+```typescript
+async function engageWithContent() {
+  // Search for relevant tweets
+  const search = await rwClient.v2.search("AI OR machine learning", {
+    max_results: 10,
+    "tweet.fields": ["author_id", "created_at"],
+  });
+
+  for (const tweet of search.data.data) {
+    // Analyze if relevant
+    const prompt = `Is this tweet relevant to AI/ML? Answer only YES or NO.\n\nTweet: ${tweet.text}`;
+
+    const messageMemory = createMessageMemory({
+      id: uuidv4() as UUID,
+      entityId: stringToUuid("engagement"),
+      roomId: stringToUuid("search"),
+      content: { text: prompt },
+    });
+
+    let response = "";
+    await runtime.messageService!.handleMessage(
+      runtime,
+      messageMemory,
+      async (content) => {
+        if (content?.text) response += content.text;
+        return [];
+      }
+    );
+
+    if (response.toUpperCase().includes("YES")) {
+      // Like the tweet
+      await rwClient.v2.like((await rwClient.v2.me()).data.id, tweet.id);
+      console.log(`❤️ Liked tweet ${tweet.id}`);
+
+      // Small chance to retweet
+      if (Math.random() < 0.1) {
+        await rwClient.v2.retweet(
+          (await rwClient.v2.me()).data.id,
+          tweet.id
+        );
+        console.log(`🔁 Retweeted ${tweet.id}`);
+      }
+    }
+
+    // Rate limiting
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+}
+```
+
+### Thread Creation
+
+Post multi-tweet threads:
+
+```typescript
+async function postThread(topic: string) {
+  const prompt = `Create a 3-tweet thread about ${topic}.\n\nFormat:\n1. [First tweet]\n2. [Second tweet]\n3. [Third tweet]\n\nEach under 280 characters.`;
+
+  const messageMemory = createMessageMemory({
+    id: uuidv4() as UUID,
+    entityId: stringToUuid("thread-creator"),
+    roomId: stringToUuid("threads"),
+    content: { text: prompt },
+  });
+
+  let response = "";
+  await runtime.messageService!.handleMessage(
+    runtime,
+    messageMemory,
+    async (content) => {
+      if (content?.text) response += content.text;
+      return [];
+    }
+  );
+
+  // Parse tweets
+  const tweets = response
+    .split("\n")
+    .filter((line) => /^\d+\./.test(line))
+    .map((line) => line.replace(/^\d+\.\s*/, "").trim());
+
+  // Post thread
+  let previousTweetId: string | undefined;
+
+  for (const tweetText of tweets) {
+    const tweet = previousTweetId
+      ? await rwClient.v2.reply(tweetText, previousTweetId)
+      : await rwClient.v2.tweet(tweetText);
+
+    previousTweetId = tweet.data.id;
+    console.log(`🧵 Posted thread tweet: ${tweet.data.id}`);
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+}
+```
+
+### Scheduled Posting
+
+```typescript
+import { CronJob } from "cron";
+
+// Post at specific times
+new CronJob(
+  "0 9,15,21 * * *", // 9 AM, 3 PM, 9 PM daily
+  async () => {
+    console.log("Scheduled post time!");
+    await postTweet();
+  },
+  null,
+  true,
+  "America/New_York"
+);
+```
+
+### Analytics Tracking
+
+```typescript
+interface TweetStats {
+  tweetId: string;
+  impressions: number;
+  likes: number;
+  retweets: number;
+  replies: number;
+}
+
+async function trackAnalytics(tweetId: string): Promise<TweetStats> {
+  const tweet = await rwClient.v2.singleTweet(tweetId, {
+    "tweet.fields": ["public_metrics"],
+  });
+
+  const metrics = tweet.data.public_metrics;
+
+  return {
+    tweetId,
+    impressions: metrics?.impression_count || 0,
+    likes: metrics?.like_count || 0,
+    retweets: metrics?.retweet_count || 0,
+    replies: metrics?.reply_count || 0,
+  };
+}
+```
+
+---
+
+## Best Practices
+
+<Tip>
+**Authentic Voice**: Maintain a consistent personality that feels genuine, not robotic.
+</Tip>
+
+<Tip>
+**Engagement Quality**: Focus on meaningful interactions over high volume.
+</Tip>
+
+<Tip>
+**Rate Limits**: Respect Twitter's rate limits to avoid being restricted.
+</Tip>
+
+<Tip>
+**Avoid Spam**: Don't over-post or send generic replies. Quality over quantity.
+</Tip>
+
+<Tip>
+**Monitor Performance**: Track which content performs best and adapt.
+</Tip>
+
+---
+
+## Rate Limits
+
+Twitter API v2 limits:
+
+- **Tweets**: 300 per 3 hours (Free tier)
+- **Likes**: 1000 per 24 hours
+- **Follows**: 400 per 24 hours
+- **DMs**: 500 per 24 hours
+
+Implement rate limiting:
+
+```typescript
+class RateLimiter {
+  private requests: number[] = [];
+
+  async checkLimit(limit: number, windowMs: number) {
+    const now = Date.now();
+    this.requests = this.requests.filter((time) => now - time < windowMs);
+
+    if (this.requests.length >= limit) {
+      const oldestRequest = this.requests[0];
+      const waitTime = windowMs - (now - oldestRequest);
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
+    }
+
+    this.requests.push(now);
+  }
+}
+```
+
+---
+
+## Deployment
+
+### Environment Variables
+
+```bash .env
+TWITTER_API_KEY=your-api-key
+TWITTER_API_SECRET=your-api-secret
+TWITTER_ACCESS_TOKEN=your-access-token
+TWITTER_ACCESS_SECRET=your-access-secret
+OPENAI_API_KEY=your-openai-key
+```
+
+### Production Deployment
+
+```bash
+# Using PM2
+pm2 start "bun run twitter-agent.ts" --name eliza-twitter
+pm2 save
+
+# View logs
+pm2 logs eliza-twitter
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Discord Bot" icon="discord" href="/examples/discord-bot">
+    Build a Discord bot with elizaOS
+  </Card>
+  <Card title="Telegram Bot" icon="telegram" href="/examples/telegram-bot">
+    Create a Telegram bot
+  </Card>
+  <Card title="Multi-Agent" icon="users" href="/examples/multi-agent">
+    Coordinate multiple social media agents
+  </Card>
+  <Card title="Custom Character" icon="user" href="/examples/custom-character">
+    Craft unique agent personalities
+  </Card>
+</CardGroup>

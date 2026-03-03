@@ -1,0 +1,499 @@
+---
+title: "TypeScript"
+description: "Build multi-agent AI applications with elizaOS in TypeScript - the primary implementation with full feature support"
+icon: "code"
+---
+
+## Overview
+
+elizaOS is primarily developed in TypeScript, providing the most comprehensive and battle-tested implementation. The TypeScript SDK offers full support for all features including actions, providers, evaluators, plugins, and services.
+
+**Package:** `@elizaos/core`
+
+**Version:** 2.0.0-alpha.27
+
+## Key Features
+
+- Full-featured agent runtime with plugin system
+- Browser and Node.js compatibility with dual build system
+- Comprehensive type definitions with TypeScript 5.9+
+- Rich ecosystem of official plugins
+- Streaming response support
+- Multi-step reasoning workflows
+- Built-in memory and state management
+
+## Installation
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install @elizaos/core
+    ```
+  </Tab>
+  <Tab title="pnpm">
+    ```bash
+    pnpm add @elizaos/core
+    ```
+  </Tab>
+  <Tab title="bun">
+    ```bash
+    bun add @elizaos/core
+    ```
+  </Tab>
+</Tabs>
+
+## Quick Start
+
+### Basic Agent Setup
+
+```typescript
+import { AgentRuntime, corePlugin } from "@elizaos/core";
+import type { Character } from "@elizaos/core";
+
+// Define your agent's character
+const character: Character = {
+  name: "Eliza",
+  username: "eliza",
+  bio: "A helpful AI assistant built with elizaOS",
+  system: "You are a helpful and concise AI assistant.",
+  messageExamples: [
+    {
+      name: "Eliza",
+      examples: [
+        {
+          name: "user",
+          content: { text: "Hello!" }
+        },
+        {
+          name: "Eliza",
+          content: { text: "Hi! How can I help you today?" }
+        }
+      ]
+    }
+  ]
+};
+
+// Create runtime with plugins
+const runtime = new AgentRuntime({
+  character,
+  plugins: [
+    corePlugin,
+    // Add other plugins here
+  ],
+});
+
+// Initialize and use
+await runtime.initialize();
+```
+
+### Handling Messages
+
+```typescript
+import { v4 as uuidv4 } from "uuid";
+import type { Memory, Content } from "@elizaos/core";
+
+const userId = uuidv4();
+const roomId = uuidv4();
+
+// Create a message
+const message: Memory = {
+  id: uuidv4(),
+  entity_id: userId,
+  room_id: roomId,
+  content: {
+    text: "What's the weather like?",
+    source: "cli",
+    channel_type: "DM"
+  },
+  created_at: Date.now()
+};
+
+// Process the message
+const result = await runtime.messageService.handleMessage(
+  runtime,
+  message
+);
+
+console.log(result.response_content.text);
+```
+
+## Core Concepts
+
+### Actions
+
+Actions define tasks your agent can perform. Here's how to create a custom action:
+
+```typescript
+import type { Action, ActionContext } from "@elizaos/core";
+
+const weatherAction: Action = {
+  name: "GET_WEATHER",
+  description: "Get current weather for a location",
+  
+  validate: async ({ content }: ActionContext) => {
+    // Check if the message mentions weather
+    return /weather|temperature|forecast/i.test(
+      content.text || ""
+    );
+  },
+  
+  handler: async ({ runtime, content }: ActionContext) => {
+    // Extract location from message
+    const location = extractLocation(content.text);
+    
+    // Call weather API
+    const weather = await fetchWeather(location);
+    
+    return {
+      success: true,
+      content: {
+        text: `The weather in ${location} is ${weather.temp}°F and ${weather.condition}`
+      }
+    };
+  }
+};
+```
+
+### Providers
+
+Providers supply contextual information to your agent:
+
+```typescript
+import type { Provider, State } from "@elizaos/core";
+
+const timeProvider: Provider = {
+  name: "CURRENT_TIME",
+  
+  get: async (runtime: IAgentRuntime, message: Memory) => {
+    const now = new Date();
+    return {
+      currentTime: now.toISOString(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timestamp: now.getTime()
+    };
+  }
+};
+```
+
+### Evaluators
+
+Evaluators analyze conversations and extract insights:
+
+```typescript
+import type { Evaluator, Memory } from "@elizaos/core";
+
+const sentimentEvaluator: Evaluator = {
+  name: "SENTIMENT_ANALYZER",
+  description: "Analyzes sentiment of user messages",
+  
+  handler: async ({
+    runtime,
+    message
+  }: {
+    runtime: IAgentRuntime;
+    message: Memory;
+  }) => {
+    const sentiment = analyzeSentiment(message.content.text);
+    
+    // Store sentiment in memory
+    await runtime.databaseAdapter.createMemory({
+      ...message,
+      metadata: {
+        sentiment: sentiment.score,
+        label: sentiment.label
+      }
+    });
+    
+    return {
+      success: true,
+      sentiment
+    };
+  }
+};
+```
+
+### Creating Plugins
+
+Bundle actions, providers, and evaluators into reusable plugins:
+
+```typescript
+import type { Plugin } from "@elizaos/core";
+
+const myPlugin: Plugin = {
+  name: "my-custom-plugin",
+  description: "A custom plugin for elizaOS",
+  
+  actions: [weatherAction],
+  providers: [timeProvider],
+  evaluators: [sentimentEvaluator],
+  
+  // Optional: Add services
+  services: [],
+  
+  // Optional: Add custom routes
+  routes: [
+    {
+      type: "GET",
+      path: "/health",
+      handler: async (req, res, runtime) => {
+        res.status(200).json({ status: "ok" });
+      }
+    }
+  ]
+};
+
+export default myPlugin;
+```
+
+## Browser Support
+
+elizaOS provides a browser-optimized build with automatic polyfills:
+
+```typescript
+// Automatically uses browser build in web environments
+import { AgentRuntime } from "@elizaos/core";
+
+// Browser-safe operations
+const runtime = new AgentRuntime({
+  character,
+  plugins: [corePlugin]
+});
+```
+
+### Browser Polyfills
+
+For full browser compatibility, ensure these polyfills are available:
+
+```bash
+npm install buffer crypto-browserify stream-browserify events
+```
+
+## Configuration
+
+### Environment Variables
+
+Configure runtime behavior with environment variables:
+
+```bash
+# Logging
+LOG_LEVEL=debug
+LOG_DIAGNOSTIC=true
+LOG_JSON_FORMAT=false
+
+# Runtime settings
+SECRET_SALT=your-secret-salt
+ALLOW_NO_DATABASE=false
+
+# Multi-step reasoning
+USE_MULTI_STEP=true
+MAX_MULTISTEP_ITERATIONS=6
+
+# Error tracking
+SENTRY_DSN=your-sentry-dsn
+SENTRY_ENVIRONMENT=production
+```
+
+### Runtime Settings
+
+```typescript
+const runtime = new AgentRuntime({
+  character,
+  plugins: [corePlugin],
+  
+  // Database adapter
+  databaseAdapter: new PostgresAdapter({
+    connectionString: process.env.DATABASE_URL
+  }),
+  
+  // Conversation settings
+  conversationLength: 32,
+  
+  // Custom settings
+  settings: {
+    ENABLE_AUTONOMY: true,
+    ADVANCED_CAPABILITIES: true
+  }
+});
+```
+
+## Type System
+
+elizaOS provides comprehensive TypeScript types:
+
+```typescript
+import type {
+  // Core types
+  UUID,
+  Content,
+  Memory,
+  Character,
+  Agent,
+  
+  // Component types
+  Action,
+  Provider,
+  Evaluator,
+  Plugin,
+  Service,
+  
+  // Runtime types
+  IAgentRuntime,
+  State,
+  ActionContext,
+  ActionResult,
+  
+  // Database types
+  IDatabaseAdapter,
+  
+  // Model types
+  ModelHandler,
+  GenerateTextOptions,
+  GenerateTextResult
+} from "@elizaos/core";
+```
+
+## Advanced Features
+
+### Streaming Responses
+
+```typescript
+const stream = await runtime.generateTextStream({
+  prompt: "Tell me a story",
+  model: "gpt-4"
+});
+
+for await (const chunk of stream) {
+  process.stdout.write(chunk);
+}
+```
+
+### Multi-Step Reasoning
+
+Enable iterative problem-solving:
+
+```typescript
+const runtime = new AgentRuntime({
+  character,
+  plugins: [corePlugin],
+  settings: {
+    USE_MULTI_STEP: true,
+    MAX_MULTISTEP_ITERATIONS: 10
+  }
+});
+```
+
+### Memory Management
+
+```typescript
+// Search memories by embedding
+const memories = await runtime.databaseAdapter.searchMemories({
+  tableName: "messages",
+  roomId: roomId,
+  embedding: await runtime.getEmbedding("search query"),
+  match_threshold: 0.8,
+  match_count: 10
+});
+
+// Get recent memories
+const recent = await runtime.databaseAdapter.getMemories({
+  tableName: "messages",
+  roomId: roomId,
+  count: 20
+});
+```
+
+## Testing
+
+### Unit Tests
+
+```typescript
+import { describe, it, expect } from "vitest";
+import { AgentRuntime, corePlugin } from "@elizaos/core";
+
+describe("MyPlugin", () => {
+  it("should handle weather requests", async () => {
+    const runtime = new AgentRuntime({
+      character: testCharacter,
+      plugins: [corePlugin, myPlugin]
+    });
+    
+    await runtime.initialize();
+    
+    const result = await runtime.processMessage({
+      content: { text: "What's the weather?" },
+      // ... other fields
+    });
+    
+    expect(result.content.text).toContain("weather");
+  });
+});
+```
+
+### Integration Tests
+
+```typescript
+import { beforeAll, afterAll } from "vitest";
+import { InMemoryDatabaseAdapter } from "@elizaos/core";
+
+let runtime: AgentRuntime;
+
+beforeAll(async () => {
+  runtime = new AgentRuntime({
+    character: testCharacter,
+    plugins: [corePlugin],
+    databaseAdapter: new InMemoryDatabaseAdapter()
+  });
+  
+  await runtime.initialize();
+});
+
+afterAll(async () => {
+  await runtime.stop();
+});
+```
+
+## Official Plugins
+
+elizaOS provides a rich ecosystem of official plugins:
+
+| Plugin | Package | Description |
+|--------|---------|-------------|
+| OpenAI | `@elizaos/plugin-openai` | GPT-4, embeddings, DALL-E |
+| Anthropic | `@elizaos/plugin-anthropic` | Claude models |
+| Discord | `@elizaos/plugin-discord` | Discord bot integration |
+| Telegram | `@elizaos/plugin-telegram` | Telegram bot integration |
+| Twitter | `@elizaos/plugin-twitter` | Twitter/X integration |
+| SQL | `@elizaos/plugin-sql` | PostgreSQL database adapter |
+
+## Examples
+
+Check out complete examples in the repository:
+
+- [Basic Chat Agent](https://github.com/elizaos/eliza/tree/main/examples/chat/typescript)
+- [Discord Bot](https://github.com/elizaos/eliza/tree/main/examples/discord)
+- [REST API Server](https://github.com/elizaos/eliza/tree/main/examples/rest-api)
+- [Multi-Agent System](https://github.com/elizaos/eliza/tree/main/examples/multi-agent)
+
+## Resources
+
+- [GitHub Repository](https://github.com/elizaos/eliza)
+- [npm Package](https://www.npmjs.com/package/@elizaos/core)
+- [TypeScript Documentation](https://www.typescriptlang.org/)
+- [API Reference](/api/agent-runtime)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Python SDK" icon="python" href="/languages/python">
+    Explore the Python implementation
+  </Card>
+  <Card title="Rust SDK" icon="rust" href="/languages/rust">
+    Check out the Rust implementation
+  </Card>
+  <Card title="Creating Plugins" icon="plug" href="/guides/creating-plugins">
+    Build your own plugins
+  </Card>
+  <Card title="Examples" icon="code" href="/examples/basic-chat">
+    View complete examples
+  </Card>
+</CardGroup>

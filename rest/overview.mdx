@@ -1,0 +1,103 @@
+---
+title: REST API Overview
+description: Learn how to interact with elizaOS agents through the REST API
+---
+
+## Introduction
+
+The elizaOS REST API provides programmatic access to create, manage, and interact with AI agents. You can use the API to build custom applications, integrate agents into existing systems, or automate agent management workflows.
+
+## Base URL
+
+The default base URL for the elizaOS REST API is:
+
+```
+http://localhost:3000
+```
+
+You can configure a different host and port when starting your elizaOS server.
+
+## API Structure
+
+The API is organized into two main sections:
+
+### Agent Management
+
+Manage the lifecycle of agents in your elizaOS deployment:
+
+- **List Agents** - Retrieve all agents
+- **Create Agent** - Create a new agent with a character configuration
+- **Get Agent** - Retrieve details about a specific agent
+- **Update Agent** - Modify an existing agent's configuration
+- **Delete Agent** - Remove an agent from the system
+- **Start Agent** - Start an agent's runtime
+- **Stop Agent** - Stop a running agent
+
+### Messaging
+
+Interact with agents through messages and conversations:
+
+- **Send Message** - Send a message to an agent
+- **Get Messages** - Retrieve conversation history
+- **Create Channel** - Create a communication channel
+- **Sessions** - Manage conversation sessions
+
+## Response Format
+
+All API responses use JSON format and follow a consistent structure:
+
+```json
+{
+  "success": true,
+  "data": {
+    // Response data
+  }
+}
+```
+
+Error responses include additional context:
+
+```json
+{
+  "success": false,
+  "error": "Error message describing what went wrong"
+}
+```
+
+## HTTP Status Codes
+
+The API uses standard HTTP status codes:
+
+- `200 OK` - Request succeeded
+- `201 Created` - Resource created successfully
+- `400 Bad Request` - Invalid request parameters
+- `401 Unauthorized` - Authentication required
+- `403 Forbidden` - Insufficient permissions
+- `404 Not Found` - Resource not found
+- `500 Internal Server Error` - Server error
+- `503 Service Unavailable` - Service not available
+
+## Rate Limiting
+
+The API does not enforce rate limiting by default, but individual deployments may implement their own rate limiting policies. Check with your deployment administrator for specific limits.
+
+## Pagination
+
+Endpoints that return lists support pagination through query parameters:
+
+- `offset` - Number of items to skip (default: 0)
+- `limit` - Maximum number of items to return (default: 50)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/rest/authentication">
+    Learn how to authenticate API requests
+  </Card>
+  <Card title="Agent Management" icon="robot" href="/rest/agents/list">
+    Start managing agents through the API
+  </Card>
+  <Card title="Messaging" icon="messages" href="/rest/messaging/send-message">
+    Send messages to agents
+  </Card>
+</CardGroup>

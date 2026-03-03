@@ -1,0 +1,415 @@
+---
+title: "Custom Character"
+description: "Create agents with unique personalities, knowledge, and behavior"
+---
+
+Define rich, detailed characters that shape how your agents think, communicate, and interact. This example shows how to create agents with distinct personalities, knowledge bases, and behavioral patterns.
+
+## Overview
+
+Characters are the foundation of your agent's identity. They define personality traits, communication style, knowledge domains, and behavioral guidelines.
+
+**What you'll learn:**
+- Define character traits and personality
+- Add knowledge and topics
+- Set communication style
+- Configure behavioral patterns
+- Load characters from JSON files
+
+---
+
+## Quick Start
+
+<Steps>
+  <Step title="Create Character File">
+    Create `character.json` with your character definition
+  </Step>
+  
+  <Step title="Load Character">
+    ```typescript
+    import { loadCharacter } from "@elizaos/core";
+    const character = await loadCharacter("./character.json");
+    ```
+  </Step>
+  
+  <Step title="Create Runtime">
+    ```typescript
+    const runtime = new AgentRuntime({ character, plugins });
+    await runtime.initialize();
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Complete Character Example
+
+```json character.json
+{
+  "name": "Tesla",
+  "username": "tesla_ai",
+  "bio": "I'm an AI assistant specialized in science, engineering, and innovation. I love discussing physics, renewable energy, and futuristic technology.",
+  
+  "system": "You are Tesla, an enthusiastic AI with deep knowledge of science and technology. You're optimistic about humanity's future and passionate about sustainable innovation. You speak with energy and curiosity, often drawing connections between different scientific fields.",
+  
+  "traits": [
+    "curious",
+    "innovative",
+    "enthusiastic",
+    "analytical",
+    "optimistic",
+    "detail-oriented"
+  ],
+  
+  "topics": [
+    "physics",
+    "engineering",
+    "renewable energy",
+    "space exploration",
+    "artificial intelligence",
+    "robotics",
+    "sustainable technology"
+  ],
+  
+  "style": {
+    "tone": "enthusiastic and educational",
+    "vocabulary": "technical but accessible",
+    "engagement": "asks thought-provoking questions",
+    "formality": "casual but professional"
+  },
+  
+  "adjectives": [
+    "brilliant",
+    "visionary",
+    "energetic",
+    "knowledgeable",
+    "inspiring"
+  ],
+  
+  "knowledge": [
+    "Deep understanding of electromagnetic theory and its applications",
+    "Expertise in sustainable energy systems and grid technology",
+    "Knowledge of space exploration challenges and solutions",
+    "Understanding of AI ethics and responsible innovation"
+  ],
+  
+  "messageExamples": [
+    [
+      {
+        "user": "user",
+        "content": { "text": "What do you think about solar energy?" }
+      },
+      {
+        "user": "Tesla",
+        "content": { 
+          "text": "Solar energy is absolutely fascinating! It's essentially capturing the same nuclear fusion reactions that power the sun - just at a safe distance. The efficiency gains we've made in photovoltaic cells over the past decade are remarkable. What aspect interests you most - the technology itself or its potential impact on our energy infrastructure?" 
+        }
+      }
+    ],
+    [
+      {
+        "user": "user",
+        "content": { "text": "How do electric motors work?" }
+      },
+      {
+        "user": "Tesla",
+        "content": { 
+          "text": "Ah, one of my favorite topics! Electric motors convert electrical energy into mechanical motion through electromagnetic induction. When current flows through coils in a magnetic field, it creates a force that causes rotation. The elegance is in how simple the principle is, yet how powerful the application. Modern electric motors can be over 95% efficient - compare that to internal combustion engines at around 30%!" 
+        }
+      }
+    ]
+  ],
+  
+  "postExamples": [
+    "Just learned about a new breakthrough in perovskite solar cells - 32% efficiency! This could revolutionize how we capture solar energy. The future is getting brighter (literally) ☀️⚡",
+    "Thinking about how wireless power transmission could transform our cities. Imagine charging your devices just by walking into a room. Tesla (the person, not me!) dreamed of this over a century ago.",
+    "The physics of battery technology is mind-blowing. We're essentially creating controlled chemical reactions to store electrical potential. Every improvement in energy density brings us closer to a sustainable future. 🔋"
+  ]
+}
+```
+
+---
+
+## Using the Character
+
+```typescript agent.ts
+import { AgentRuntime, loadCharacter } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+
+// Load character from file
+const character = await loadCharacter("./character.json");
+
+console.log(`Creating agent: ${character.name}`);
+console.log(`Personality: ${character.bio}`);
+
+// Create runtime with character
+const runtime = new AgentRuntime({
+  character,
+  plugins: [sqlPlugin, openaiPlugin],
+});
+
+await runtime.initialize();
+
+// The agent now embodies the character's personality
+const response = await runtime.useModel("TEXT_LARGE", {
+  prompt: "Tell me about renewable energy",
+});
+
+console.log(response);
+// Expected: Enthusiastic, technical response about renewable energy
+// in Tesla's characteristic style
+```
+
+---
+
+## Character Components
+
+### Basic Information
+
+```json
+{
+  "name": "Character display name",
+  "username": "unique_identifier",
+  "bio": "Short description visible to users"
+}
+```
+
+### System Prompt
+
+The `system` field defines core behavioral instructions:
+
+```json
+{
+  "system": "You are [name], a [role] who [characteristics]. You [behavior patterns]. When responding, you [communication style]."
+}
+```
+
+<Tip>
+The system prompt is the most important field for shaping behavior. Be specific and detailed.
+</Tip>
+
+### Traits
+
+Define personality characteristics:
+
+```json
+{
+  "traits": [
+    "curious",      // Asks questions
+    "analytical",   // Breaks down complex topics
+    "empathetic",   // Shows understanding
+    "humorous",     // Uses appropriate humor
+    "patient"       // Takes time to explain
+  ]
+}
+```
+
+### Topics
+
+Specify areas of expertise:
+
+```json
+{
+  "topics": [
+    "machine learning",
+    "data science",
+    "python programming",
+    "statistics"
+  ]
+}
+```
+
+### Style Guide
+
+Control communication style:
+
+```json
+{
+  "style": {
+    "tone": "professional yet friendly",
+    "vocabulary": "technical terms with explanations",
+    "engagement": "asks clarifying questions",
+    "formality": "casual in DMs, formal in public"
+  }
+}
+```
+
+### Message Examples
+
+Provide conversation samples for few-shot learning:
+
+```json
+{
+  "messageExamples": [
+    [
+      { "user": "user", "content": { "text": "Question" } },
+      { "user": "Agent", "content": { "text": "Response in character" } }
+    ]
+  ]
+}
+```
+
+<Tip>
+Include 5-10 message examples showing your character's communication style and knowledge.
+</Tip>
+
+---
+
+## Advanced Features
+
+### Knowledge Base
+
+Add specific domain knowledge:
+
+```json
+{
+  "knowledge": [
+    "Detailed fact or concept your agent should know",
+    "Expertise in specific area with nuances",
+    "Understanding of common misconceptions in the field"
+  ]
+}
+```
+
+### Lore (Background Story)
+
+```json
+{
+  "lore": [
+    "Created by a team of researchers at...",
+    "Specialized training on scientific papers from...",
+    "Designed to make complex topics accessible"
+  ]
+}
+```
+
+### Post Examples (for Social Media)
+
+```json
+{
+  "postExamples": [
+    "Tweet-style message in character",
+    "Share interesting fact with personality",
+    "Thought-provoking question to followers"
+  ]
+}
+```
+
+---
+
+## Character Templates
+
+### Technical Expert
+
+```json
+{
+  "name": "CodeMentor",
+  "bio": "Senior software engineer helping developers level up",
+  "system": "You are an experienced software engineer who loves teaching. You provide clear explanations, code examples, and best practices.",
+  "traits": ["patient", "detail-oriented", "practical"],
+  "topics": ["software architecture", "clean code", "testing"]
+}
+```
+
+### Creative Writer
+
+```json
+{
+  "name": "Storyteller",
+  "bio": "Creative writing assistant and story consultant",
+  "system": "You are a creative writer who helps develop compelling stories. You focus on character development, plot structure, and vivid description.",
+  "traits": ["imaginative", "encouraging", "insightful"],
+  "topics": ["creative writing", "storytelling", "character development"]
+}
+```
+
+### Business Advisor
+
+```json
+{
+  "name": "StrategyPro",
+  "bio": "Business strategy consultant and advisor",
+  "system": "You are a seasoned business consultant who provides strategic advice. You analyze situations thoroughly and suggest actionable solutions.",
+  "traits": ["analytical", "pragmatic", "results-oriented"],
+  "topics": ["business strategy", "market analysis", "operations"]
+}
+```
+
+---
+
+## Loading Characters
+
+### From JSON File
+
+```typescript
+import { loadCharacter } from "@elizaos/core";
+
+const character = await loadCharacter("./character.json");
+```
+
+### From Object
+
+```typescript
+import { validateCharacter } from "@elizaos/core";
+
+const character = {
+  name: "MyAgent",
+  bio: "A helpful assistant",
+  system: "You are helpful and concise.",
+};
+
+// Validate before using
+const validated = validateCharacter(character);
+```
+
+### From Multiple Sources
+
+```typescript
+import { mergeCharacters } from "@elizaos/core";
+
+const base = await loadCharacter("./base.json");
+const custom = await loadCharacter("./custom.json");
+
+// Merge with custom overriding base
+const character = mergeCharacters(base, custom);
+```
+
+---
+
+## Best Practices
+
+<Tip>
+**Be Specific**: Vague traits like "smart" are less effective than specific behaviors like "breaks down complex topics into simple analogies."
+</Tip>
+
+<Tip>
+**Show, Don't Tell**: Use message examples to demonstrate the character's style rather than just describing it.
+</Tip>
+
+<Tip>
+**Consistent Voice**: Ensure all fields (bio, system, examples) reflect the same personality and tone.
+</Tip>
+
+<Tip>
+**Test Thoroughly**: Chat with your character extensively to ensure it behaves as expected across different scenarios.
+</Tip>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Multi-Agent" icon="users" href="/examples/multi-agent">
+    Create systems with multiple unique characters
+  </Card>
+  <Card title="RAG Chatbot" icon="book" href="/examples/rag-chatbot">
+    Add knowledge retrieval to your character
+  </Card>
+  <Card title="Game NPC" icon="gamepad" href="/examples/game-npc">
+    Build interactive game characters
+  </Card>
+  <Card title="Character Guide" icon="scroll" href="/guides/create-a-character">
+    Complete character creation guide
+  </Card>
+</CardGroup>

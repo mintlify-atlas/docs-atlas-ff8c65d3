@@ -1,0 +1,513 @@
+---
+title: "Plugin Schemas"
+description: "Type definitions and validation schemas for plugins"
+---
+
+## Overview
+
+Plugin schemas define the structure and validation rules for plugin components, including actions, providers, services, and routes.
+
+## ServiceClass Interface
+
+Defines the structure for service classes that can be registered by plugins.
+
+```typescript
+interface ServiceClass {
+  serviceType: string;                                    // Service identifier
+  start(runtime: IAgentRuntime): Promise<Service>;       // Factory method
+  stopRuntime?(runtime: IAgentRuntime): Promise<void>;   // Optional cleanup
+  registerSendHandlers?(runtime: IAgentRuntime, service: Service): void;
+  new (runtime?: IAgentRuntime): Service;                // Constructor
+}
+```
+
+### Example Service
+
+```typescript
+import { Service, IAgentRuntime } from "@elizaos/core";
+
+class TwitterService extends Service {
+  static serviceType = "twitter";
+  private client: TwitterClient;
+  
+  constructor(runtime?: IAgentRuntime) {
+    super();
+  }
+  
+  static async start(runtime: IAgentRuntime): Promise<Service> {
+    const service = new TwitterService(runtime);
+    await service.initialize(runtime);
+    return service;
+  }
+  
+  async initialize(runtime: IAgentRuntime): Promise<void> {
+    const apiKey = runtime.getSetting("TWITTER_API_KEY");
+    this.client = new TwitterClient(apiKey);
+    runtime.logger.success("Twitter service started");
+  }
+  
+  async stop(): Promise<void> {
+    await this.client.disconnect();
+  }
+  
+  static async stopRuntime(runtime: IAgentRuntime): Promise<void> {
+    // Runtime-wide cleanup
+  }
+}
+```
+
+## Route Schemas
+
+### Route Interface
+
+Defines HTTP routes exposed by plugins.
+
+```typescript
+type Route = PublicRoute | PrivateRoute
+
+interface BaseRoute {
+  type: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "STATIC";
+  path: string;
+  filePath?: string;  // For STATIC routes
+  handler?: (req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime) => Promise<void>;
+  isMultipart?: boolean;  // For file uploads
+  x402?: X402Config;      // Payment configuration
+}
+
+interface PublicRoute extends BaseRoute {
+  public: true;
+  name: string;  // Required for public routes
+}
+
+interface PrivateRoute extends BaseRoute {
+  public?: false;
+  name?: string;  // Optional for private routes
+}
+```
+
+### Request/Response Types
+
+```typescript
+interface RouteRequest {
+  body?: Record<string, RouteBodyValue>;
+  params?: Record<string, string>;
+  query?: Record<string, string | string[]>;
+  headers?: Record<string, string | string[] | undefined>;
+  method?: string;
+  path?: string;
+  url?: string;
+}
+
+interface RouteResponse {
+  status: (code: number) => RouteResponse;
+  json: (data: unknown) => RouteResponse;
+  send: (data: unknown) => RouteResponse;
+  end: () => RouteResponse;
+  setHeader?: (name: string, value: string | string[]) => RouteResponse;
+  sendFile?: (path: string) => RouteResponse;
+  headersSent?: boolean;
+}
+```
+
+### Payment Configuration (x402)
+
+```typescript
+interface X402Config {
+  price: string;        // USDC base units (6 decimals, "1000000" = $1.00)
+  network?: string;     // Override network
+  payTo?: string;       // Override payment address
+  description?: string; // Payment description
+}
+```
+
+### Route Examples
+
+```typescript
+// Public API route
+{
+  type: "GET",
+  path: "/api/status",
+  public: true,
+  name: "status",
+  handler: async (req, res, runtime) => {
+    res.status(200).json({
+      status: "ok",
+      version: "1.0.0"
+    });
+  }
+}
+
+// Private webhook route
+{
+  type: "POST",
+  path: "/webhooks/twitter",
+  public: false,
+  handler: async (req, res, runtime) => {
+    const event = req.body;
+    // Process webhook
+    res.status(200).json({ received: true });
+  }
+}
+
+// Multipart file upload
+{
+  type: "POST",
+  path: "/api/upload",
+  public: true,
+  name: "upload",
+  isMultipart: true,
+  handler: async (req, res, runtime) => {
+    const file = req.body?.file;
+    // Process file upload
+    res.status(200).json({ uploaded: true });
+  }
+}
+
+// Paid route with x402
+{
+  type: "POST",
+  path: "/api/premium/analysis",
+  public: true,
+  name: "premium-analysis",
+  x402: {
+    price: "1000000",  // $1.00 USDC
+    description: "Premium analysis service"
+  },
+  handler: async (req, res, runtime) => {
+    // Payment verified by framework
+    const result = await performAnalysis(req.body);
+    res.status(200).json(result);
+  }
+}
+
+// Static file serving
+{
+  type: "STATIC",
+  path: "/public",
+  filePath: "./public",
+  public: true,
+  name: "static-files"
+}
+```
+
+## Component Type Definitions
+
+### ComponentTypeDefinition
+
+Defines entity component types with JSON schema validation.
+
+```typescript
+interface ComponentTypeDefinition {
+  name: string;
+  description: string;
+  schema: JSONSchemaDefinition;
+  validator?: (data: Record<string, RouteBodyValue>) => boolean;
+}
+
+interface JSONSchemaDefinition {
+  type?: string | string[];
+  properties?: Record<string, JSONSchemaDefinition>;
+  required?: string[];
+  items?: JSONSchemaDefinition;
+  [key: string]: JsonValue | undefined;
+}
+```
+
+### Example Component Type
+
+```typescript
+const twitterProfileComponent: ComponentTypeDefinition = {
+  name: "TwitterProfile",
+  description: "Twitter profile information",
+  schema: {
+    type: "object",
+    properties: {
+      username: { type: "string" },
+      followers: { type: "number" },
+      verified: { type: "boolean" },
+      bio: { type: "string" }
+    },
+    required: ["username"]
+  },
+  validator: (data) => {
+    return typeof data.username === "string" && data.username.length > 0;
+  }
+};
+```
+
+## Event Schemas
+
+### PluginEvents
+
+Event handlers keyed by event type.
+
+```typescript
+type PluginEvents = {
+  [K in keyof EventPayloadMap]?: EventHandler<K>[];
+}
+
+type EventHandler<K extends keyof EventPayloadMap> = (
+  payload: EventPayloadMap[K]
+) => Promise<void>
+```
+
+### Common Event Types
+
+```typescript
+enum EventType {
+  MESSAGE_RECEIVED = "message_received",
+  MESSAGE_SENT = "message_sent",
+  ACTION_STARTED = "action_started",
+  ACTION_COMPLETED = "action_completed",
+  WORLD_JOINED = "world_joined",
+  WORLD_CONNECTED = "world_connected",
+  ENTITY_JOINED = "entity_joined",
+  ENTITY_LEFT = "entity_left",
+  REACTION_RECEIVED = "reaction_received",
+  POST_GENERATED = "post_generated",
+  EVALUATOR_STARTED = "evaluator_started",
+  EVALUATOR_COMPLETED = "evaluator_completed",
+  RUN_STARTED = "run_started",
+  RUN_ENDED = "run_ended",
+  RUN_TIMEOUT = "run_timeout",
+  CONTROL_MESSAGE = "control_message"
+}
+```
+
+### Event Payload Examples
+
+```typescript
+interface MessagePayload {
+  runtime: IAgentRuntime;
+  message: Memory;
+}
+
+interface ActionEventPayload {
+  runtime: IAgentRuntime;
+  roomId: UUID;
+  messageId: UUID;
+  content: Content;
+  world?: World;
+}
+
+interface WorldPayload {
+  runtime: IAgentRuntime;
+  world: World;
+  rooms: Room[];
+  entities: Entity[];
+  source?: string;
+  onComplete?: () => void;
+}
+
+interface EntityPayload {
+  runtime: IAgentRuntime;
+  entityId: UUID;
+  worldId?: UUID;
+  roomId?: string;
+  source?: string;
+  metadata?: Record<string, unknown>;
+}
+```
+
+## Model Handler Schemas
+
+### ModelHandler Interface
+
+```typescript
+interface ModelHandler<TParams, TResult> {
+  handler: (runtime: IAgentRuntime, params: TParams) => Promise<TResult>;
+  provider: string;           // Plugin name
+  priority?: number;          // Selection priority (higher = preferred)
+  registrationOrder?: number; // Tie-breaker
+  maxInputTokens?: number;    // Input token limit
+}
+```
+
+### Model Type Mapping
+
+```typescript
+interface ModelParamsMap {
+  TEXT_SMALL: GenerateTextParams;
+  TEXT_LARGE: GenerateTextParams;
+  TEXT_EMBEDDING: TextEmbeddingParams | string | null;
+  TEXT_TOKENIZER_ENCODE: TokenizeTextParams;
+  TEXT_TOKENIZER_DECODE: DetokenizeTextParams;
+  TEXT_REASONING_SMALL: GenerateTextParams;
+  TEXT_REASONING_LARGE: GenerateTextParams;
+  IMAGE: ImageGenerationParams;
+  IMAGE_DESCRIPTION: ImageDescriptionParams | string;
+  TRANSCRIPTION: TranscriptionParams | Buffer | string;
+  TEXT_TO_SPEECH: TextToSpeechParams | string;
+  AUDIO: AudioProcessingParams;
+  VIDEO: VideoProcessingParams;
+  OBJECT_SMALL: ObjectGenerationParams;
+  OBJECT_LARGE: ObjectGenerationParams;
+  TEXT_COMPLETION: GenerateTextParams;
+  RESEARCH: ResearchParams;
+  SAFEGUARD: SafeguardParams;
+}
+
+interface ModelResultMap {
+  TEXT_SMALL: string;
+  TEXT_LARGE: string;
+  TEXT_EMBEDDING: number[];
+  TEXT_TOKENIZER_ENCODE: number[];
+  TEXT_TOKENIZER_DECODE: string;
+  TEXT_REASONING_SMALL: string;
+  TEXT_REASONING_LARGE: string;
+  IMAGE: ImageGenerationResult[];
+  IMAGE_DESCRIPTION: ImageDescriptionResult;
+  TRANSCRIPTION: string;
+  TEXT_TO_SPEECH: Buffer | ArrayBuffer | Uint8Array;
+  AUDIO: Buffer | ArrayBuffer | Uint8Array | Record<string, JsonValue>;
+  VIDEO: Buffer | ArrayBuffer | Uint8Array | Record<string, JsonValue>;
+  OBJECT_SMALL: Record<string, JsonValue>;
+  OBJECT_LARGE: Record<string, JsonValue>;
+  TEXT_COMPLETION: string;
+  RESEARCH: ResearchResult;
+  SAFEGUARD: SafeguardResult;
+}
+```
+
+### Streaming Model Result
+
+```typescript
+interface TextStreamResult {
+  textStream: AsyncIterable<string>;
+  text: Promise<string>;
+  usage: Promise<TokenUsage | undefined>;
+  finishReason: Promise<string | undefined>;
+}
+
+type PluginModelResult<K extends keyof ModelResultMap> =
+  K extends StreamableModelType
+    ? ModelResultMap[K] | TextStreamResult
+    : ModelResultMap[K]
+```
+
+## Validation Schemas
+
+### Plugin Validation
+
+```typescript
+function validatePlugin(plugin: unknown): {
+  isValid: boolean;
+  errors: string[];
+}
+
+function isValidPluginShape(obj: unknown): obj is Plugin
+```
+
+### Validation Example
+
+```typescript
+import { validatePlugin } from "@elizaos/core";
+
+const plugin = {
+  name: "my-plugin",
+  description: "My custom plugin",
+  actions: [/* ... */]
+};
+
+const validation = validatePlugin(plugin);
+if (!validation.isValid) {
+  console.error("Plugin validation failed:", validation.errors);
+  // Errors: ["Plugin actions must be an array of action objects"]
+}
+```
+
+## Bootstrap Plugin Example
+
+The bootstrap plugin demonstrates complete plugin structure:
+
+```typescript
+export function createBootstrapPlugin(config: CapabilityConfig = {}): Plugin {
+  return {
+    name: "bootstrap",
+    description: "Agent bootstrap with basic actions and evaluators",
+    
+    actions: [
+      replyAction,
+      ignoreAction,
+      noneAction,
+      ...(config.advancedCapabilities ? advancedActions : [])
+    ],
+    
+    providers: [
+      actionsProvider,
+      characterProvider,
+      timeProvider,
+      worldProvider,
+      ...(config.advancedCapabilities ? advancedProviders : [])
+    ],
+    
+    evaluators: [
+      ...(config.disableBasic ? [] : basicEvaluators)
+    ],
+    
+    services: [
+      AgentEventService,
+      TaskService,
+      EmbeddingGenerationService,
+      ...(config.advancedCapabilities ? advancedServices : [])
+    ],
+    
+    events: {
+      [EventType.MESSAGE_SENT]: [
+        async (payload: MessagePayload) => {
+          payload.runtime.logger.debug("Message sent");
+        }
+      ],
+      [EventType.WORLD_JOINED]: [
+        async (payload: WorldPayload) => {
+          await handleServerSync(payload);
+        }
+      ]
+    },
+    
+    routes: [
+      ...(config.enableAutonomy ? autonomyRoutes : [])
+    ]
+  };
+}
+```
+
+## Type Safety
+
+TypeScript provides full type safety for plugin schemas:
+
+```typescript
+// Type-safe model handler
+const plugin: Plugin = {
+  name: "custom-llm",
+  description: "Custom LLM provider",
+  
+  models: {
+    TEXT_SMALL: async (runtime, params) => {
+      // params is typed as GenerateTextParams
+      const prompt = params.prompt;
+      // return must be string or TextStreamResult
+      return "Generated text";
+    },
+    
+    IMAGE_DESCRIPTION: async (runtime, params) => {
+      // params is typed as ImageDescriptionParams | string
+      const imageUrl = typeof params === "string" ? params : params.imageUrl;
+      // return must be ImageDescriptionResult
+      return {
+        description: "An image",
+        title: "Image"
+      };
+    }
+  }
+};
+```
+
+## See Also
+
+- [Plugin Interface](/api/plugin-interface)
+- [Plugin Hooks](/api/plugin-hooks)
+- [Actions](/api/actions)
+- [Providers](/api/providers)
+- [Services](/api/services)
+- [Events](/api/events)

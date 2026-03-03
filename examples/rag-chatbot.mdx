@@ -1,0 +1,649 @@
+---
+title: "RAG Chatbot"
+description: "Build a chatbot that retrieves and reasons over your documents"
+---
+
+Create an intelligent chatbot that can answer questions based on your own documents using Retrieval-Augmented Generation (RAG). This example shows how to ingest documents, create embeddings, and retrieve relevant context.
+
+## Overview
+
+RAG combines document retrieval with AI generation, allowing your agent to provide accurate answers grounded in your specific knowledge base.
+
+**What you'll learn:**
+- Ingest and process documents
+- Create vector embeddings
+- Perform semantic search
+- Retrieve relevant context
+- Generate accurate, grounded responses
+
+---
+
+## Quick Start
+
+<Steps>
+  <Step title="Install Dependencies">
+    ```bash
+    bun add @elizaos/core @elizaos/plugin-openai @elizaos/plugin-sql uuid
+    ```
+  </Step>
+  
+  <Step title="Prepare Documents">
+    Create a `docs/` folder with text files:
+    ```bash
+    mkdir docs
+    echo "Your knowledge base content here" > docs/guide.txt
+    ```
+  </Step>
+  
+  <Step title="Run RAG Chatbot">
+    ```bash
+    export OPENAI_API_KEY="your-key"
+    bun run rag-chatbot.ts
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Complete Example
+
+```typescript rag-chatbot.ts
+import {
+  AgentRuntime,
+  createMessageMemory,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import { v4 as uuidv4 } from "uuid";
+import { readFileSync, readdirSync } from "fs";
+import { join } from "path";
+import * as readline from "readline";
+
+// Document ingestion
+async function ingestDocuments(
+  runtime: AgentRuntime,
+  docsPath: string
+): Promise<void> {
+  console.log("📚 Ingesting documents...");
+
+  const files = readdirSync(docsPath).filter(
+    (f) => f.endsWith(".txt") || f.endsWith(".md")
+  );
+
+  for (const file of files) {
+    const content = readFileSync(join(docsPath, file), "utf-8");
+
+    // Split into chunks
+    const chunks = chunkText(content, 500);
+
+    // Store each chunk with embeddings
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+
+      // Create embedding
+      const embedding = await runtime.embed(chunk);
+
+      // Store in vector database
+      await runtime.knowledgeManager!.createMemory({
+        id: uuidv4() as UUID,
+        roomId: stringToUuid("knowledge-base"),
+        entityId: stringToUuid("system"),
+        content: {
+          text: chunk,
+          metadata: {
+            source: file,
+            chunkIndex: i,
+            totalChunks: chunks.length,
+          },
+        },
+        embedding,
+      });
+    }
+
+    console.log(`  ✅ Processed ${file} (${chunks.length} chunks)`);
+  }
+
+  console.log("✅ Document ingestion complete\n");
+}
+
+// Text chunking utility
+function chunkText(text: string, maxChunkSize: number): string[] {
+  const chunks: string[] = [];
+  const paragraphs = text.split("\n\n");
+
+  let currentChunk = "";
+
+  for (const paragraph of paragraphs) {
+    if (currentChunk.length + paragraph.length > maxChunkSize) {
+      if (currentChunk) {
+        chunks.push(currentChunk.trim());
+      }
+      currentChunk = paragraph;
+    } else {
+      currentChunk += (currentChunk ? "\n\n" : "") + paragraph;
+    }
+  }
+
+  if (currentChunk) {
+    chunks.push(currentChunk.trim());
+  }
+
+  return chunks.filter((c) => c.length > 0);
+}
+
+// Semantic search
+async function searchKnowledge(
+  runtime: AgentRuntime,
+  query: string,
+  limit: number = 3
+): Promise<string[]> {
+  // Create query embedding
+  const queryEmbedding = await runtime.embed(query);
+
+  // Search for similar chunks
+  const results = await runtime.knowledgeManager!.searchMemories({
+    roomId: stringToUuid("knowledge-base"),
+    embedding: queryEmbedding,
+    limit,
+  });
+
+  return results.map((r) => r.content.text);
+}
+
+// Create RAG-enabled character
+const character = {
+  name: "DocBot",
+  bio: "A knowledgeable assistant with access to your document library.",
+  system: `You are DocBot, an assistant with access to a knowledge base.
+
+When answering questions:
+1. Use the provided context from the knowledge base
+2. Be accurate and cite sources when possible
+3. If information isn't in the context, say so clearly
+4. Provide helpful, detailed answers based on the documents
+
+Always ground your responses in the provided context.`,
+};
+
+console.log("🚀 Initializing RAG chatbot...");
+
+// Create runtime
+const runtime = new AgentRuntime({
+  character,
+  plugins: [sqlPlugin, openaiPlugin],
+});
+
+await runtime.initialize();
+
+// Ingest documents
+const docsPath = "./docs";
+await ingestDocuments(runtime, docsPath);
+
+// Setup chat
+const userId = uuidv4() as UUID;
+const roomId = stringToUuid("rag-chat");
+
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+});
+
+console.log("💬 Ask questions about your documents (type 'exit' to quit)\n");
+
+const prompt = () => {
+  rl.question("You: ", async (input) => {
+    const text = input.trim();
+
+    if (text.toLowerCase() === "exit") {
+      console.log("\n👋 Goodbye!");
+      rl.close();
+      await runtime.stop();
+      process.exit(0);
+    }
+
+    if (!text) {
+      prompt();
+      return;
+    }
+
+    // Search knowledge base
+    console.log("\n🔍 Searching knowledge base...");
+    const relevantChunks = await searchKnowledge(runtime, text, 3);
+
+    console.log(`Found ${relevantChunks.length} relevant chunks\n`);
+
+    // Create message with context
+    const contextMessage = `Context from knowledge base:
+
+${relevantChunks.map((chunk, i) => `[${i + 1}] ${chunk}`).join("\n\n")}
+
+---
+
+User question: ${text}`;
+
+    const message = createMessageMemory({
+      id: uuidv4() as UUID,
+      entityId: userId,
+      roomId,
+      content: { text: contextMessage },
+    });
+
+    // Get response
+    process.stdout.write("DocBot: ");
+    await runtime.messageService!.handleMessage(
+      runtime,
+      message,
+      async (content) => {
+        if (content?.text) {
+          process.stdout.write(content.text);
+        }
+        return [];
+      }
+    );
+
+    console.log("\n");
+    prompt();
+  });
+};
+
+prompt();
+```
+
+---
+
+## Example Interaction
+
+```
+🚀 Initializing RAG chatbot...
+📚 Ingesting documents...
+  ✅ Processed product-guide.txt (12 chunks)
+  ✅ Processed faq.txt (8 chunks)
+  ✅ Processed pricing.txt (5 chunks)
+✅ Document ingestion complete
+
+💬 Ask questions about your documents (type 'exit' to quit)
+
+You: What are the pricing plans?
+
+🔍 Searching knowledge base...
+Found 3 relevant chunks
+
+DocBot: Based on the pricing information, we offer three plans:
+
+1. **Starter Plan** - $29/month
+   - Up to 10 users
+   - 100GB storage
+   - Email support
+
+2. **Professional Plan** - $99/month
+   - Up to 50 users
+   - 1TB storage
+   - Priority support
+   - Advanced analytics
+
+3. **Enterprise Plan** - Custom pricing
+   - Unlimited users
+   - Custom storage
+   - 24/7 dedicated support
+   - Custom integrations
+
+All plans include a 14-day free trial with no credit card required.
+
+You: How do I reset my password?
+
+🔍 Searching knowledge base...
+Found 3 relevant chunks
+
+DocBot: To reset your password:
+
+1. Go to the login page
+2. Click "Forgot Password" below the login form
+3. Enter your email address
+4. Check your email for a reset link (check spam folder if not received)
+5. Click the link and create a new password
+6. Your new password must be at least 8 characters with a mix of letters and numbers
+
+If you don't receive the email within 5 minutes, contact support@company.com
+```
+
+---
+
+## Document Formats
+
+### Plain Text
+
+```text docs/guide.txt
+Getting Started
+
+Welcome to our product! This guide will help you get started.
+
+Installation
+
+To install, run: npm install product-name
+
+Configuration
+
+Create a config.json file with your settings...
+```
+
+### Markdown
+
+```markdown docs/api-reference.md
+# API Reference
+
+## Authentication
+
+All API requests require authentication using an API key.
+
+### Headers
+```
+Authorization: Bearer YOUR_API_KEY
+```
+
+## Endpoints
+
+### GET /users
+
+Retrieve list of users...
+```
+
+### JSON
+
+For structured data:
+
+```typescript
+import { readFileSync } from "fs";
+
+const data = JSON.parse(readFileSync("./docs/data.json", "utf-8"));
+const text = JSON.stringify(data, null, 2); // Convert to text
+```
+
+---
+
+## Advanced Features
+
+### Metadata Filtering
+
+Filter searches by metadata:
+
+```typescript
+async function searchWithFilter(
+  runtime: AgentRuntime,
+  query: string,
+  source: string
+) {
+  const queryEmbedding = await runtime.embed(query);
+
+  const results = await runtime.knowledgeManager!.searchMemories({
+    roomId: stringToUuid("knowledge-base"),
+    embedding: queryEmbedding,
+    limit: 5,
+    filter: {
+      "metadata.source": source, // Only search specific document
+    },
+  });
+
+  return results.map((r) => r.content.text);
+}
+```
+
+### Citation Tracking
+
+Add source citations to responses:
+
+```typescript
+const contextWithSources = relevantChunks
+  .map(
+    (chunk, i) =>
+      `[Source: ${chunk.metadata?.source}]\n${chunk.text}`
+  )
+  .join("\n\n");
+
+const message = `Context:
+${contextWithSources}
+
+User question: ${text}
+
+Please cite sources in your answer using [Source: filename] format.`;
+```
+
+### Hybrid Search
+
+Combine vector search with keyword matching:
+
+```typescript
+async function hybridSearch(
+  runtime: AgentRuntime,
+  query: string
+) {
+  // Vector search
+  const vectorResults = await searchKnowledge(runtime, query, 5);
+
+  // Keyword search
+  const keywordResults = await runtime.knowledgeManager!.searchMemories({
+    roomId: stringToUuid("knowledge-base"),
+    query: query, // Text-based search
+    limit: 5,
+  });
+
+  // Merge and deduplicate
+  const combined = [...vectorResults, ...keywordResults];
+  const unique = Array.from(new Set(combined.map((r) => r.content.text)));
+
+  return unique.slice(0, 5);
+}
+```
+
+### Re-ranking
+
+Re-rank results for better relevance:
+
+```typescript
+async function rerank(
+  runtime: AgentRuntime,
+  query: string,
+  results: string[]
+): Promise<string[]> {
+  // Use LLM to score relevance
+  const scores = await Promise.all(
+    results.map(async (result) => {
+      const response = await runtime.useModel("TEXT_SMALL", {
+        prompt: `Rate how relevant this passage is to the query on a scale of 0-10.
+        
+Query: ${query}
+        
+Passage: ${result}
+        
+Respond with just a number (0-10):`,
+      });
+
+      return { result, score: parseFloat(String(response)) || 0 };
+    })
+  );
+
+  // Sort by score
+  scores.sort((a, b) => b.score - a.score);
+
+  return scores.map((s) => s.result);
+}
+```
+
+---
+
+## Document Processing
+
+### PDF Support
+
+```bash
+bun add pdf-parse
+```
+
+```typescript
+import pdf from "pdf-parse";
+
+async function processPDF(filePath: string): Promise<string> {
+  const dataBuffer = readFileSync(filePath);
+  const data = await pdf(dataBuffer);
+  return data.text;
+}
+```
+
+### Web Scraping
+
+```bash
+bun add cheerio
+```
+
+```typescript
+import { load } from "cheerio";
+
+async function scrapeWebPage(url: string): Promise<string> {
+  const response = await fetch(url);
+  const html = await response.text();
+  const $ = load(html);
+
+  // Extract main content
+  $('script, style, nav, footer').remove();
+  const text = $('body').text().trim();
+
+  return text;
+}
+```
+
+### URL Ingestion
+
+```typescript
+async function ingestURL(
+  runtime: AgentRuntime,
+  url: string
+) {
+  console.log(`🌐 Fetching ${url}...`);
+  const content = await scrapeWebPage(url);
+
+  const chunks = chunkText(content, 500);
+
+  for (let i = 0; i < chunks.length; i++) {
+    const embedding = await runtime.embed(chunks[i]);
+
+    await runtime.knowledgeManager!.createMemory({
+      id: uuidv4() as UUID,
+      roomId: stringToUuid("knowledge-base"),
+      entityId: stringToUuid("system"),
+      content: {
+        text: chunks[i],
+        metadata: {
+          source: url,
+          chunkIndex: i,
+        },
+      },
+      embedding,
+    });
+  }
+
+  console.log(`✅ Ingested ${url}`);
+}
+```
+
+---
+
+## Optimization
+
+### Chunk Size Selection
+
+Choose appropriate chunk sizes:
+
+```typescript
+const CHUNK_CONFIG = {
+  technical: 800, // Longer for technical docs
+  faq: 300, // Shorter for Q&A
+  narrative: 1000, // Longer for stories
+};
+```
+
+### Overlap Strategy
+
+Add overlap between chunks for context:
+
+```typescript
+function chunkWithOverlap(
+  text: string,
+  chunkSize: number,
+  overlap: number = 100
+): string[] {
+  const chunks: string[] = [];
+  let start = 0;
+
+  while (start < text.length) {
+    const end = Math.min(start + chunkSize, text.length);
+    chunks.push(text.slice(start, end));
+    start += chunkSize - overlap;
+  }
+
+  return chunks;
+}
+```
+
+### Caching
+
+Cache embeddings to avoid recomputation:
+
+```typescript
+const embeddingCache = new Map<string, number[]>();
+
+async function getCachedEmbedding(
+  runtime: AgentRuntime,
+  text: string
+): Promise<number[]> {
+  const cached = embeddingCache.get(text);
+  if (cached) return cached;
+
+  const embedding = await runtime.embed(text);
+  embeddingCache.set(text, embedding);
+  return embedding;
+}
+```
+
+---
+
+## Best Practices
+
+<Tip>
+**Quality Over Quantity**: Better to have well-curated, high-quality documents than massive amounts of noisy data.
+</Tip>
+
+<Tip>
+**Test Retrieval**: Manually test searches to ensure relevant chunks are being retrieved.
+</Tip>
+
+<Tip>
+**Update Regularly**: Keep your knowledge base current by re-ingesting updated documents.
+</Tip>
+
+<Tip>
+**Monitor Performance**: Track which queries work well and which need improvement.
+</Tip>
+
+<Tip>
+**Context Window**: Ensure retrieved context fits within your model's context window.
+</Tip>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Custom Character" icon="user" href="/examples/custom-character">
+    Create specialized knowledge agents
+  </Card>
+  <Card title="Multi-Agent" icon="users" href="/examples/multi-agent">
+    Build RAG systems with multiple agents
+  </Card>
+  <Card title="REST API Server" icon="server" href="/examples/rest-api-server">
+    Expose RAG via HTTP endpoints
+  </Card>
+  <Card title="RAG Guide" icon="book-open" href="/guides/rag">
+    Complete RAG implementation guide
+  </Card>
+</CardGroup>

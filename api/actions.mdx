@@ -1,0 +1,504 @@
+---
+title: "Actions"
+description: "Action system for defining executable agent behaviors"
+---
+
+## Overview
+
+Actions are executable behaviors that agents can perform. They define what the agent can do, from sending messages to interacting with external APIs. The elizaOS action system includes parameter extraction, validation, and result chaining.
+
+## Action Type
+
+```typescript
+interface Action {
+  name: string;
+  description: string;
+  handler: Handler;
+  validate: Validator;
+  similes?: string[];
+  examples?: ActionExample[][];
+  priority?: number;
+  tags?: string[];
+  parameters?: ActionParameter[];
+}
+```
+
+<ResponseField name="name" type="string" required>
+  Action name (uppercase recommended, e.g., "SEND_MESSAGE")
+</ResponseField>
+
+<ResponseField name="description" type="string" required>
+  Detailed description for LLM to understand when to use this action
+</ResponseField>
+
+<ResponseField name="handler" type="Handler" required>
+  Function that executes the action
+</ResponseField>
+
+<ResponseField name="validate" type="Validator" required>
+  Function that validates if action should run in current context
+</ResponseField>
+
+<ResponseField name="similes" type="string[]">
+  Alternative names for the action (e.g., ["message", "dm", "chat"])
+</ResponseField>
+
+<ResponseField name="examples" type="ActionExample[][]">
+  Conversation examples showing when to use this action
+</ResponseField>
+
+<ResponseField name="priority" type="number">
+  Action ordering priority (higher = earlier in prompt)
+</ResponseField>
+
+<ResponseField name="tags" type="string[]">
+  Tags for categorization and filtering
+</ResponseField>
+
+<ResponseField name="parameters" type="ActionParameter[]">
+  Input parameters that LLM extracts from conversation
+</ResponseField>
+
+## Handler Type
+
+```typescript
+type Handler = (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+  options?: HandlerOptions,
+  callback?: HandlerCallback,
+  responses?: Memory[]
+) => Promise<ActionResult | undefined>
+```
+
+<ParamField path="runtime" type="IAgentRuntime" required>
+  Agent runtime instance with access to all agent capabilities
+</ParamField>
+
+<ParamField path="message" type="Memory" required>
+  Incoming message that triggered this action
+</ParamField>
+
+<ParamField path="state" type="State">
+  Current state with provider data and values
+</ParamField>
+
+<ParamField path="options" type="HandlerOptions">
+  Handler options including parameters, action context, and streaming
+</ParamField>
+
+<ParamField path="callback" type="HandlerCallback">
+  Callback for sending responses during action execution
+</ParamField>
+
+<ParamField path="responses" type="Memory[]">
+  Array of response memories from the agent
+</ParamField>
+
+## ActionResult Type
+
+```typescript
+interface ActionResult {
+  success: boolean;
+  text?: string;
+  values?: Record<string, ProviderValue>;
+  data?: ProviderDataRecord;
+  error?: string | Error;
+  continueChain?: boolean;
+  cleanup?: () => void | Promise<void>;
+}
+```
+
+<ResponseField name="success" type="boolean" required>
+  Whether the action succeeded
+</ResponseField>
+
+<ResponseField name="text" type="string">
+  Optional text description of the result
+</ResponseField>
+
+<ResponseField name="values" type="Record<string, ProviderValue>">
+  Values to merge into state for subsequent actions
+</ResponseField>
+
+<ResponseField name="data" type="ProviderDataRecord">
+  Structured data payload with action-specific results
+</ResponseField>
+
+<ResponseField name="error" type="string | Error">
+  Error information if action failed
+</ResponseField>
+
+<ResponseField name="continueChain" type="boolean">
+  Whether to continue executing chained actions
+</ResponseField>
+
+<ResponseField name="cleanup" type="function">
+  Optional cleanup function to execute after action completion
+</ResponseField>
+
+## ActionParameter Type
+
+```typescript
+interface ActionParameter {
+  name: string;
+  description: string;
+  required?: boolean;
+  schema: ActionParameterSchema;
+  examples?: ActionParameterExampleValue[];
+}
+```
+
+<ResponseField name="name" type="string" required>
+  Parameter name (used as key in parameters object)
+</ResponseField>
+
+<ResponseField name="description" type="string" required>
+  Human-readable description for LLM guidance
+</ResponseField>
+
+<ResponseField name="required" type="boolean">
+  Whether this parameter is required (default: false)
+</ResponseField>
+
+<ResponseField name="schema" type="ActionParameterSchema" required>
+  JSON Schema for validation
+</ResponseField>
+
+<ResponseField name="examples" type="array">
+  Example values shown to model
+</ResponseField>
+
+## ActionParameterSchema Type
+
+```typescript
+interface ActionParameterSchema {
+  type: "string" | "number" | "boolean" | "array" | "object";
+  default?: JsonValue | null;
+  enum?: string[];
+  enumValues?: string[];
+  minimum?: number;
+  maximum?: number;
+  pattern?: string;
+  properties?: Record<string, ActionParameterSchema>;
+  items?: ActionParameterSchema;
+}
+```
+
+<ResponseField name="type" type="string" required>
+  Parameter type
+</ResponseField>
+
+<ResponseField name="default" type="JsonValue">
+  Default value if not provided
+</ResponseField>
+
+<ResponseField name="enum" type="string[]">
+  Allowed values (for string parameters)
+</ResponseField>
+
+<ResponseField name="minimum" type="number">
+  Minimum value (for number parameters)
+</ResponseField>
+
+<ResponseField name="maximum" type="number">
+  Maximum value (for number parameters)
+</ResponseField>
+
+<ResponseField name="pattern" type="string">
+  Regex pattern (for string parameters)
+</ResponseField>
+
+<ResponseField name="properties" type="object">
+  Nested properties (for object parameters)
+</ResponseField>
+
+<ResponseField name="items" type="ActionParameterSchema">
+  Item schema (for array parameters)
+</ResponseField>
+
+## Registering Actions
+
+### registerAction
+
+```typescript
+runtime.registerAction(action: Action): void
+```
+
+Register an action with the runtime.
+
+**Example:**
+
+```typescript
+runtime.registerAction({
+  name: "SEND_MESSAGE",
+  description: "Send a message to a user on a platform",
+  parameters: [
+    {
+      name: "recipient",
+      description: "Username or ID of the recipient",
+      required: true,
+      schema: { type: "string" }
+    },
+    {
+      name: "platform",
+      description: "Platform to send on",
+      required: false,
+      schema: { 
+        type: "string", 
+        enum: ["telegram", "discord", "twitter"],
+        default: "telegram"
+      }
+    }
+  ],
+  handler: async (runtime, message, state, options) => {
+    const { recipient, platform } = options.parameters || {};
+    
+    // Send message logic here
+    await sendMessageToPlatform(platform, recipient, text);
+    
+    return {
+      success: true,
+      text: `Sent message to ${recipient} on ${platform}`
+    };
+  },
+  validate: async (runtime, message) => {
+    // Check if user has permission, etc.
+    return true;
+  },
+  similes: ["message", "dm", "send"],
+  examples: [
+    [
+      {
+        name: "user",
+        content: { text: "Send a message to @alice saying hello" }
+      },
+      {
+        name: "agent",
+        content: { 
+          text: "I'll send that message to Alice",
+          actions: ["SEND_MESSAGE"]
+        }
+      }
+    ]
+  ]
+});
+```
+
+## Action Parameters
+
+Actions can define parameters that the LLM extracts from conversation:
+
+```typescript
+runtime.registerAction({
+  name: "BOOK_FLIGHT",
+  description: "Book a flight for the user",
+  parameters: [
+    {
+      name: "origin",
+      description: "Departure city or airport code",
+      required: true,
+      schema: { type: "string" },
+      examples: ["SFO", "San Francisco", "JFK"]
+    },
+    {
+      name: "destination",
+      description: "Arrival city or airport code",
+      required: true,
+      schema: { type: "string" }
+    },
+    {
+      name: "departureDate",
+      description: "Departure date (YYYY-MM-DD)",
+      required: true,
+      schema: { type: "string", pattern: "\\d{4}-\\d{2}-\\d{2}" }
+    },
+    {
+      name: "passengerCount",
+      description: "Number of passengers",
+      required: false,
+      schema: { type: "number", minimum: 1, maximum: 10, default: 1 }
+    }
+  ],
+  handler: async (runtime, message, state, options) => {
+    const params = options.parameters || {};
+    
+    // Parameters are already validated
+    const { origin, destination, departureDate, passengerCount } = params;
+    
+    const booking = await bookFlight({
+      origin,
+      destination,
+      departureDate,
+      passengerCount
+    });
+    
+    return {
+      success: true,
+      text: `Booked flight from ${origin} to ${destination}`,
+      data: { bookingId: booking.id }
+    };
+  },
+  validate: async () => true
+});
+```
+
+The LLM will extract parameters from the conversation:
+
+```
+User: Book me a flight from San Francisco to New York on March 15th for 2 passengers
+
+Extracted parameters:
+- origin: "San Francisco"
+- destination: "New York"
+- departureDate: "2024-03-15"
+- passengerCount: 2
+```
+
+## Action Chaining
+
+Actions can return values for subsequent actions:
+
+```typescript
+runtime.registerAction({
+  name: "LOOKUP_USER",
+  handler: async (runtime, message) => {
+    const user = await database.findUser(username);
+    return {
+      success: true,
+      values: {
+        userId: user.id,
+        userEmail: user.email
+      },
+      data: { user }
+    };
+  },
+  validate: async () => true
+});
+
+runtime.registerAction({
+  name: "SEND_EMAIL",
+  handler: async (runtime, message, state, options) => {
+    // Access values from previous LOOKUP_USER action
+    const userEmail = state.values?.userEmail;
+    
+    await sendEmail(userEmail, subject, body);
+    
+    return { success: true };
+  },
+  validate: async () => true
+});
+```
+
+## Streaming Responses
+
+Actions can stream responses during execution:
+
+```typescript
+runtime.registerAction({
+  name: "GENERATE_REPORT",
+  handler: async (runtime, message, state, options) => {
+    const { onStreamChunk } = options;
+    
+    if (onStreamChunk) {
+      await onStreamChunk("Generating report...\n");
+      
+      // Stream progress updates
+      for (let i = 0; i < 10; i++) {
+        await processSection(i);
+        await onStreamChunk(`Section ${i + 1} complete\n`);
+      }
+    }
+    
+    return {
+      success: true,
+      text: "Report generation complete"
+    };
+  },
+  validate: async () => true
+});
+```
+
+## Example: Complete Action
+
+```typescript
+import { Action } from "@elizaos/core";
+
+export const weatherAction: Action = {
+  name: "GET_WEATHER",
+  description: "Get current weather for a location",
+  
+  parameters: [
+    {
+      name: "location",
+      description: "City name or zip code",
+      required: true,
+      schema: { type: "string" },
+      examples: ["San Francisco", "94102", "London"]
+    },
+    {
+      name: "units",
+      description: "Temperature units",
+      required: false,
+      schema: { 
+        type: "string",
+        enum: ["celsius", "fahrenheit"],
+        default: "celsius"
+      }
+    }
+  ],
+  
+  similes: ["weather", "forecast", "temperature"],
+  
+  examples: [
+    [
+      {
+        name: "user",
+        content: { text: "What's the weather in San Francisco?" }
+      },
+      {
+        name: "agent",
+        content: {
+          text: "Let me check the weather for you",
+          actions: ["GET_WEATHER"]
+        }
+      }
+    ]
+  ],
+  
+  handler: async (runtime, message, state, options) => {
+    const { location, units } = options.parameters || {};
+    
+    try {
+      const apiKey = runtime.getSetting("WEATHER_API_KEY");
+      const response = await fetch(
+        `https://api.weather.com/v1/current?location=${location}&units=${units}&key=${apiKey}`
+      );
+      
+      const data = await response.json();
+      
+      return {
+        success: true,
+        text: `Weather in ${location}: ${data.temperature}°${units === 'fahrenheit' ? 'F' : 'C'}, ${data.conditions}`,
+        data: {
+          location,
+          temperature: data.temperature,
+          conditions: data.conditions,
+          units
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to get weather: ${error.message}`
+      };
+    }
+  },
+  
+  validate: async (runtime, message) => {
+    // Only allow if API key is configured
+    return runtime.getSetting("WEATHER_API_KEY") !== null;
+  }
+};
+```

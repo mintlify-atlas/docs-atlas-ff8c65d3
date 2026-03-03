@@ -1,0 +1,563 @@
+---
+title: 'Multi-Agent Setup'
+description: 'Create and orchestrate multiple AI agents working together in elizaOS'
+---
+
+ElizaOS is designed from the ground up for multi-agent architectures. This guide shows you how to create, manage, and coordinate multiple agents.
+
+## Single vs Multi-Agent
+
+**Single Agent:**
+```typescript
+const runtime = new AgentRuntime({
+  character: myCharacter,
+  databaseAdapter: new PostgresDatabaseAdapter({
+    connectionString: process.env.POSTGRES_URL
+  })
+});
+```
+
+**Multiple Agents:**
+```typescript
+const agents = [
+  { name: 'assistant', character: assistantCharacter },
+  { name: 'researcher', character: researcherCharacter },
+  { name: 'writer', character: writerCharacter }
+];
+
+const runtimes = agents.map(agent => 
+  new AgentRuntime({
+    character: agent.character,
+    databaseAdapter: new PostgresDatabaseAdapter({
+      connectionString: process.env.POSTGRES_URL
+    })
+  })
+);
+```
+
+## Creating Multiple Agents
+
+<Steps>
+  <Step title="Define Character Files">
+    Create separate character files for each agent:
+    
+    ```json characters/assistant.json
+    {
+      "name": "Assistant",
+      "bio": ["Helpful general-purpose assistant"],
+      "topics": ["general", "coordination"],
+      "style": {
+        "all": ["Be helpful and clear"]
+      }
+    }
+    ```
+    
+    ```json characters/researcher.json
+    {
+      "name": "Researcher",
+      "bio": ["Expert at finding and analyzing information"],
+      "topics": ["research", "analysis", "data"],
+      "style": {
+        "all": ["Be thorough and cite sources"]
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Create Agent Manager">
+    ```typescript
+    import { AgentRuntime } from '@elizaos/core';
+    import { PostgresDatabaseAdapter } from '@elizaos/adapter-postgres';
+    import fs from 'fs';
+    
+    class AgentManager {
+      private agents: Map<string, AgentRuntime> = new Map();
+      
+      async initialize() {
+        const characterFiles = [
+          'characters/assistant.json',
+          'characters/researcher.json',
+          'characters/writer.json'
+        ];
+        
+        for (const file of characterFiles) {
+          const character = JSON.parse(
+            fs.readFileSync(file, 'utf-8')
+          );
+          
+          const runtime = new AgentRuntime({
+            character,
+            databaseAdapter: new PostgresDatabaseAdapter({
+              connectionString: process.env.POSTGRES_URL
+            })
+          });
+          
+          this.agents.set(character.name, runtime);
+        }
+      }
+      
+      getAgent(name: string): AgentRuntime | undefined {
+        return this.agents.get(name);
+      }
+      
+      getAllAgents(): AgentRuntime[] {
+        return Array.from(this.agents.values());
+      }
+    }
+    
+    const manager = new AgentManager();
+    await manager.initialize();
+    ```
+  </Step>
+
+  <Step title="Set Up Shared Database">
+    All agents should share the same database to enable coordination:
+    
+    ```typescript
+    const sharedDb = new PostgresDatabaseAdapter({
+      connectionString: process.env.POSTGRES_URL
+    });
+    
+    // Each agent uses the same database
+    const agent1 = new AgentRuntime({
+      character: char1,
+      databaseAdapter: sharedDb
+    });
+    
+    const agent2 = new AgentRuntime({
+      character: char2,
+      databaseAdapter: sharedDb
+    });
+    ```
+  </Step>
+</Steps>
+
+## Agent Communication
+
+### Direct Messaging
+
+Agents can send messages to each other:
+
+```typescript
+import { v4 as uuidv4 } from 'uuid';
+
+async function sendAgentMessage(
+  fromAgent: AgentRuntime,
+  toAgent: AgentRuntime,
+  text: string,
+  roomId: UUID
+) {
+  const message = {
+    id: uuidv4() as UUID,
+    entityId: fromAgent.agentId,
+    agentId: toAgent.agentId,
+    roomId: roomId,
+    content: {
+      text,
+      source: 'agent-to-agent'
+    },
+    metadata: {
+      type: 'message',
+      fromAgent: fromAgent.character.name,
+      toAgent: toAgent.character.name
+    }
+  };
+  
+  // Store message in shared database
+  await fromAgent.createMemory(message, 'messages');
+  
+  // Process with receiving agent
+  await toAgent.processMessage(message);
+}
+
+// Usage
+await sendAgentMessage(
+  assistantAgent,
+  researcherAgent,
+  'Please research the latest AI developments',
+  roomId
+);
+```
+
+### Shared Rooms
+
+Multiple agents can participate in the same room:
+
+```typescript
+import { createUniqueUuid } from '@elizaos/core';
+
+// Create a room for agent collaboration
+const collaborationRoomId = createUniqueUuid(
+  assistantAgent,
+  'agent-collab-room'
+);
+
+await assistantAgent.ensureRoomExists({
+  id: collaborationRoomId,
+  name: 'Agent Collaboration',
+  source: 'internal',
+  type: ChannelType.GROUP,
+  worldId: worldId
+});
+
+// All agents can now participate
+const agents = [assistantAgent, researcherAgent, writerAgent];
+for (const agent of agents) {
+  await agent.ensureConnection({
+    entityId: agent.agentId,
+    roomId: collaborationRoomId,
+    worldId: worldId,
+    // ... other connection params
+  });
+}
+```
+
+## Coordination Patterns
+
+### Task Delegation
+
+Create an action that delegates work to specialized agents:
+
+```typescript
+const delegateAction: Action = {
+  name: 'DELEGATE_TASK',
+  description: 'Delegate a task to a specialized agent',
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const taskType = await determineTaskType(message.content.text);
+    
+    // Select appropriate agent
+    let targetAgent: AgentRuntime;
+    if (taskType === 'research') {
+      targetAgent = manager.getAgent('Researcher')!;
+    } else if (taskType === 'writing') {
+      targetAgent = manager.getAgent('Writer')!;
+    } else {
+      targetAgent = manager.getAgent('Assistant')!;
+    }
+    
+    // Send task to specialized agent
+    await sendAgentMessage(
+      runtime,
+      targetAgent,
+      message.content.text,
+      message.roomId
+    );
+    
+    await callback({
+      text: `I've delegated this to our ${targetAgent.character.name}.`
+    });
+    
+    return { success: true };
+  }
+};
+```
+
+### Workflow Orchestration
+
+Coordinate multi-step workflows across agents:
+
+```typescript
+class WorkflowOrchestrator {
+  constructor(private agents: Map<string, AgentRuntime>) {}
+  
+  async executeResearchWorkflow(topic: string, roomId: UUID) {
+    // Step 1: Research phase
+    const researcher = this.agents.get('Researcher')!;
+    const researchResult = await this.executeStep(
+      researcher,
+      `Research: ${topic}`,
+      roomId
+    );
+    
+    // Step 2: Analysis phase
+    const analyst = this.agents.get('Analyst')!;
+    const analysisResult = await this.executeStep(
+      analyst,
+      `Analyze this research: ${researchResult}`,
+      roomId
+    );
+    
+    // Step 3: Writing phase
+    const writer = this.agents.get('Writer')!;
+    const article = await this.executeStep(
+      writer,
+      `Write an article based on: ${analysisResult}`,
+      roomId
+    );
+    
+    return article;
+  }
+  
+  private async executeStep(
+    agent: AgentRuntime,
+    prompt: string,
+    roomId: UUID
+  ): Promise<string> {
+    // Create task message
+    const message = createTaskMessage(agent, prompt, roomId);
+    
+    // Process and wait for result
+    const result = await agent.processMessage(message);
+    
+    return result.content.text;
+  }
+}
+```
+
+### Consensus Building
+
+Multiple agents can collaborate on decisions:
+
+```typescript
+async function buildConsensus(
+  agents: AgentRuntime[],
+  question: string,
+  roomId: UUID
+): Promise<string> {
+  const responses: string[] = [];
+  
+  // Get response from each agent
+  for (const agent of agents) {
+    const message = createMessage(agent, question, roomId);
+    const result = await agent.processMessage(message);
+    responses.push(result.content.text);
+  }
+  
+  // Use a coordinator agent to synthesize responses
+  const coordinator = agents[0];
+  const synthesisPrompt = `
+    Multiple agents provided these perspectives on "${question}":
+    ${responses.map((r, i) => `Agent ${i + 1}: ${r}`).join('\n\n')}
+    
+    Please synthesize these into a consensus response.
+  `;
+  
+  const consensus = await coordinator.processMessage(
+    createMessage(coordinator, synthesisPrompt, roomId)
+  );
+  
+  return consensus.content.text;
+}
+```
+
+## Entity and World Management
+
+### Ensure Connections
+
+Agents track entities (users, other agents) and their connections:
+
+```typescript
+// Sync a user across multiple agents
+for (const agent of agents) {
+  await agent.ensureConnection({
+    entityId: userId,
+    roomId: roomId,
+    name: userName,
+    source: 'discord',
+    worldId: worldId,
+    type: ChannelType.DM
+  });
+}
+```
+
+### Shared World State
+
+Agents can share world/server state:
+
+```typescript
+const world = {
+  id: worldId,
+  name: 'My Server',
+  agentId: primaryAgent.agentId,
+  messageServerId: serverId
+};
+
+const rooms = [
+  { id: room1Id, name: 'general', type: ChannelType.GROUP },
+  { id: room2Id, name: 'support', type: ChannelType.GROUP }
+];
+
+const entities = [
+  { id: user1Id, metadata: { username: 'user1' } },
+  { id: user2Id, metadata: { username: 'user2' } }
+];
+
+// Sync all agents to the same world state
+for (const agent of agents) {
+  await agent.ensureConnections(
+    entities,
+    rooms,
+    'discord',
+    world
+  );
+}
+```
+
+## Agent Specialization
+
+### Capability-Based Routing
+
+Route tasks based on agent capabilities:
+
+```typescript
+interface AgentCapabilities {
+  research: boolean;
+  writing: boolean;
+  analysis: boolean;
+  imageGeneration: boolean;
+}
+
+const agentCapabilities = new Map<string, AgentCapabilities>([
+  ['Researcher', { research: true, writing: false, analysis: true, imageGeneration: false }],
+  ['Writer', { research: false, writing: true, analysis: false, imageGeneration: false }],
+  ['Artist', { research: false, writing: false, analysis: false, imageGeneration: true }]
+]);
+
+function selectAgent(taskType: string): string {
+  for (const [name, caps] of agentCapabilities) {
+    if (caps[taskType as keyof AgentCapabilities]) {
+      return name;
+    }
+  }
+  return 'Assistant'; // Default
+}
+```
+
+### Plugin-Based Specialization
+
+Give agents different plugins:
+
+```typescript
+const researcherAgent = new AgentRuntime({
+  character: researcherCharacter,
+  plugins: [
+    webSearchPlugin,
+    documentAnalysisPlugin,
+    citationPlugin
+  ]
+});
+
+const writerAgent = new AgentRuntime({
+  character: writerCharacter,
+  plugins: [
+    grammarPlugin,
+    styleGuidePlugin,
+    publishingPlugin
+  ]
+});
+```
+
+## Best Practices
+
+<Tip>
+- Use a shared database for all agents to enable coordination
+- Give each agent a clear, specialized role
+- Use descriptive character names and bios to differentiate agents
+- Implement proper error handling for cross-agent communication
+- Monitor agent interactions with logging and metrics
+- Use rooms to organize multi-agent conversations
+</Tip>
+
+<Warning>
+- Don't create circular message loops between agents
+- Don't let agents operate on conflicting goals without coordination
+- Don't share sensitive data between agents without access controls
+- Don't create too many agents - start with 2-3 and expand as needed
+</Warning>
+
+## Example: Research Team
+
+Here's a complete example of a research team:
+
+```typescript
+import { AgentRuntime, ChannelType } from '@elizaos/core';
+
+class ResearchTeam {
+  private coordinator: AgentRuntime;
+  private researcher: AgentRuntime;
+  private writer: AgentRuntime;
+  private roomId: UUID;
+  
+  async initialize() {
+    // Create agents
+    this.coordinator = await this.createAgent('Coordinator', coordinatorChar);
+    this.researcher = await this.createAgent('Researcher', researcherChar);
+    this.writer = await this.createAgent('Writer', writerChar);
+    
+    // Create shared room
+    this.roomId = await this.createTeamRoom();
+  }
+  
+  async research(topic: string): Promise<string> {
+    // Coordinator assigns task
+    await this.coordinator.processMessage({
+      id: uuidv4() as UUID,
+      entityId: this.coordinator.agentId,
+      roomId: this.roomId,
+      content: {
+        text: `Research needed: ${topic}`,
+        actions: ['DELEGATE_TASK']
+      }
+    });
+    
+    // Researcher performs research
+    const research = await this.researcher.processMessage({
+      id: uuidv4() as UUID,
+      entityId: this.researcher.agentId,
+      roomId: this.roomId,
+      content: {
+        text: `Research: ${topic}`,
+        actions: ['RESEARCH']
+      }
+    });
+    
+    // Writer creates article
+    const article = await this.writer.processMessage({
+      id: uuidv4() as UUID,
+      entityId: this.writer.agentId,
+      roomId: this.roomId,
+      content: {
+        text: `Write article about: ${research.content.text}`,
+        actions: ['WRITE']
+      }
+    });
+    
+    return article.content.text;
+  }
+  
+  private async createAgent(name: string, character: any): Promise<AgentRuntime> {
+    return new AgentRuntime({
+      character,
+      databaseAdapter: sharedDatabase
+    });
+  }
+  
+  private async createTeamRoom(): Promise<UUID> {
+    const roomId = uuidv4() as UUID;
+    await this.coordinator.ensureRoomExists({
+      id: roomId,
+      name: 'Research Team',
+      source: 'internal',
+      type: ChannelType.GROUP
+    });
+    return roomId;
+  }
+}
+
+// Usage
+const team = new ResearchTeam();
+await team.initialize();
+const article = await team.research('AI agent architectures');
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Agent Configuration" icon="sliders" href="/guides/agent-configuration">
+    Advanced configuration for specialized agents
+  </Card>
+  <Card title="Testing" icon="flask" href="/guides/testing">
+    Test multi-agent interactions
+  </Card>
+</CardGroup>

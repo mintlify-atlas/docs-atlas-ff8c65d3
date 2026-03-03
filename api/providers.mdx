@@ -1,0 +1,446 @@
+---
+title: "Providers"
+description: "Provider system for injecting external data into agent context"
+---
+
+## Overview
+
+Providers inject external data and context into the agent's prompt. They fetch information from databases, APIs, or compute dynamic values that inform the agent's responses. Providers run during state composition and their outputs are included in the agent's context.
+
+## Provider Type
+
+```typescript
+interface Provider {
+  name: string;
+  description?: string;
+  dynamic?: boolean;
+  position?: number;
+  private?: boolean;
+  alwaysRun?: boolean;
+  relevanceKeywords?: string[];
+  get: (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State
+  ) => Promise<ProviderResult>;
+}
+```
+
+<ResponseField name="name" type="string" required>
+  Provider name (unique identifier)
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Description of what data this provider supplies
+</ResponseField>
+
+<ResponseField name="dynamic" type="boolean">
+  If true, only included when explicitly requested or when relevanceKeywords match
+</ResponseField>
+
+<ResponseField name="position" type="number">
+  Position in provider list (positive or negative for ordering)
+</ResponseField>
+
+<ResponseField name="private" type="boolean">
+  If true, not displayed in regular provider list and must be called explicitly
+</ResponseField>
+
+<ResponseField name="alwaysRun" type="boolean">
+  If true, always included regardless of filter/include lists
+</ResponseField>
+
+<ResponseField name="relevanceKeywords" type="string[]">
+  Keywords that auto-activate this dynamic provider when they appear in the message
+</ResponseField>
+
+<ResponseField name="get" type="function" required>
+  Data retrieval function that returns provider result
+</ResponseField>
+
+## ProviderResult Type
+
+```typescript
+interface ProviderResult {
+  text?: string;
+  values?: Record<string, ProviderValue>;
+  data?: ProviderDataRecord;
+}
+```
+
+<ResponseField name="text" type="string">
+  Human-readable text for LLM prompt inclusion
+</ResponseField>
+
+<ResponseField name="values" type="Record<string, ProviderValue>">
+  Key-value pairs for template variable substitution
+</ResponseField>
+
+<ResponseField name="data" type="ProviderDataRecord">
+  Structured data for programmatic access by other components
+</ResponseField>
+
+## Registering Providers
+
+### registerProvider
+
+```typescript
+runtime.registerProvider(provider: Provider): void
+```
+
+Register a provider with the runtime.
+
+**Example:**
+
+```typescript
+runtime.registerProvider({
+  name: "CURRENT_TIME",
+  get: async (runtime, message, state) => {
+    const now = new Date();
+    return {
+      text: `Current time: ${now.toISOString()}`,
+      values: {
+        currentTime: now.toISOString(),
+        timestamp: now.getTime()
+      },
+      data: {
+        date: now
+      }
+    };
+  }
+});
+```
+
+## Provider Types
+
+### Static Providers
+
+Static providers run on every message by default:
+
+```typescript
+runtime.registerProvider({
+  name: "USER_PROFILE",
+  get: async (runtime, message) => {
+    const entity = await runtime.getEntityById(message.entityId);
+    
+    return {
+      text: `User: ${entity.names[0]}\nJoined: ${entity.createdAt}`,
+      values: {
+        userName: entity.names[0],
+        userId: entity.id
+      },
+      data: { entity }
+    };
+  }
+});
+```
+
+### Dynamic Providers
+
+Dynamic providers only run when explicitly included or when relevance keywords match:
+
+```typescript
+runtime.registerProvider({
+  name: "WEATHER",
+  description: "Current weather information",
+  dynamic: true,
+  relevanceKeywords: ["weather", "temperature", "forecast", "rain"],
+  
+  get: async (runtime, message) => {
+    const location = extractLocation(message.content.text);
+    const weather = await fetchWeather(location);
+    
+    return {
+      text: `Weather in ${location}: ${weather.temperature}°F, ${weather.conditions}`,
+      values: {
+        temperature: weather.temperature,
+        conditions: weather.conditions
+      },
+      data: { weather }
+    };
+  }
+});
+
+// Auto-activates when user mentions "weather"
+// User: "What's the weather like today?"
+```
+
+### Private Providers
+
+Private providers must be explicitly called:
+
+```typescript
+runtime.registerProvider({
+  name: "ADMIN_STATS",
+  private: true,
+  
+  get: async (runtime) => {
+    const stats = await getSystemStats();
+    return {
+      text: `System stats: ${stats.activeUsers} users, ${stats.messageCount} messages`,
+      data: { stats }
+    };
+  }
+});
+
+// Must explicitly include:
+// const state = await runtime.composeState(message, ["ADMIN_STATS"]);
+```
+
+## Example Providers
+
+### Recent Messages Provider
+
+```typescript
+runtime.registerProvider({
+  name: "RECENT_MESSAGES",
+  position: -1, // Run early
+  
+  get: async (runtime, message) => {
+    const recentMessages = await runtime.getMemories({
+      roomId: message.roomId,
+      count: 10,
+      tableName: "messages"
+    });
+    
+    const formatted = recentMessages
+      .map(m => `${m.content.user}: ${m.content.text}`)
+      .join("\n");
+    
+    return {
+      text: `Recent messages:\n${formatted}`,
+      data: { messages: recentMessages }
+    };
+  }
+});
+```
+
+### Knowledge Base Provider
+
+```typescript
+runtime.registerProvider({
+  name: "KNOWLEDGE_BASE",
+  dynamic: true,
+  relevanceKeywords: ["documentation", "how to", "guide"],
+  
+  get: async (runtime, message, state) => {
+    // Get query embedding
+    const queryEmbedding = await runtime.embed(message.content.text);
+    
+    // Search documents by similarity
+    const relevantDocs = await runtime.searchMemories({
+      tableName: "documents",
+      roomId: runtime.agentId, // Use agent's knowledge base
+      embedding: queryEmbedding,
+      match_threshold: 0.75,
+      match_count: 3
+    });
+    
+    if (relevantDocs.length === 0) {
+      return { text: "" };
+    }
+    
+    const formatted = relevantDocs
+      .map(doc => doc.content.text)
+      .join("\n\n");
+    
+    return {
+      text: `Relevant documentation:\n${formatted}`,
+      data: { documents: relevantDocs }
+    };
+  }
+});
+```
+
+### User Preferences Provider
+
+```typescript
+runtime.registerProvider({
+  name: "USER_PREFERENCES",
+  
+  get: async (runtime, message) => {
+    const entity = await runtime.getEntityById(message.entityId);
+    const preferences = entity.metadata?.preferences || {};
+    
+    const lines = [];
+    if (preferences.language) {
+      lines.push(`Preferred language: ${preferences.language}`);
+    }
+    if (preferences.timezone) {
+      lines.push(`Timezone: ${preferences.timezone}`);
+    }
+    
+    return {
+      text: lines.join("\n"),
+      values: preferences,
+      data: { preferences }
+    };
+  }
+});
+```
+
+### Facts Provider
+
+```typescript
+runtime.registerProvider({
+  name: "FACTS",
+  description: "Known facts about the user",
+  
+  get: async (runtime, message) => {
+    const facts = await runtime.getMemories({
+      roomId: message.roomId,
+      tableName: "facts",
+      count: 20
+    });
+    
+    if (facts.length === 0) {
+      return { text: "" };
+    }
+    
+    const formatted = facts
+      .map(f => `- ${f.content.text}`)
+      .join("\n");
+    
+    return {
+      text: `Known facts:\n${formatted}`,
+      data: { facts }
+    };
+  }
+});
+```
+
+### API Data Provider
+
+```typescript
+runtime.registerProvider({
+  name: "STOCK_PRICES",
+  dynamic: true,
+  relevanceKeywords: ["stock", "price", "trading", "market"],
+  
+  get: async (runtime, message) => {
+    const symbols = extractStockSymbols(message.content.text);
+    
+    if (symbols.length === 0) {
+      return { text: "" };
+    }
+    
+    const apiKey = runtime.getSetting("STOCK_API_KEY");
+    const prices = await Promise.all(
+      symbols.map(symbol => fetchStockPrice(symbol, apiKey))
+    );
+    
+    const formatted = prices
+      .map(p => `${p.symbol}: $${p.price} (${p.change > 0 ? '+' : ''}${p.change}%)`)
+      .join("\n");
+    
+    return {
+      text: `Stock prices:\n${formatted}`,
+      data: { prices }
+    };
+  }
+});
+```
+
+## Using Provider Data
+
+### In Templates
+
+Provider values can be used in templates:
+
+```typescript
+const template = `
+Current time: {{currentTime}}
+User: {{userName}}
+Temperature: {{temperature}}°F
+
+Respond to: {{userMessage}}
+`;
+```
+
+### In Actions
+
+Actions can access provider data from state:
+
+```typescript
+const action: Action = {
+  name: "SEND_REMINDER",
+  handler: async (runtime, message, state) => {
+    // Access provider data
+    const userPrefs = state.data?.providers?.USER_PREFERENCES?.data?.preferences;
+    const timezone = userPrefs?.timezone || "UTC";
+    
+    // Use timezone for reminder
+    await scheduleReminder(message, timezone);
+    
+    return { success: true };
+  },
+  validate: async () => true
+};
+```
+
+## Composing State
+
+Use `composeState` to run providers and build context:
+
+```typescript
+// Run all static providers
+const state = await runtime.composeState(message);
+
+// Run specific providers
+const state = await runtime.composeState(
+  message,
+  ["RECENT_MESSAGES", "USER_PROFILE"],
+  true // onlyInclude - only run these providers
+);
+
+// Include additional dynamic providers
+const state = await runtime.composeState(
+  message,
+  ["WEATHER", "STOCK_PRICES"]
+  // false = include these in addition to static providers
+);
+```
+
+## Best Practices
+
+### Performance
+- Keep providers fast (they run on every message)
+- Use caching for expensive operations
+- Make expensive providers dynamic
+- Set appropriate `position` for ordering
+
+### Data Quality
+- Return empty `text` if no relevant data
+- Format text clearly for LLM understanding
+- Include structured `data` for programmatic access
+- Use `values` for template substitution
+
+### Organization
+- Use descriptive names (UPPERCASE convention)
+- Document what data each provider supplies
+- Group related providers with `position`
+- Mark admin-only providers as `private`
+
+### Error Handling
+
+```typescript
+runtime.registerProvider({
+  name: "EXTERNAL_API",
+  get: async (runtime, message) => {
+    try {
+      const data = await fetchExternalData();
+      return {
+        text: formatData(data),
+        data: { apiData: data }
+      };
+    } catch (error) {
+      runtime.logger.error(
+        { error: error.message },
+        "Failed to fetch external data"
+      );
+      // Return empty result instead of throwing
+      return { text: "" };
+    }
+  }
+});
+```

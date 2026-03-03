@@ -1,0 +1,424 @@
+---
+title: Get Messages
+description: Retrieve conversation history and messages from a room
+api: GET /agents/{agentId}/rooms/{roomId}/messages
+---
+
+## Endpoint
+
+```
+GET /agents/{agentId}/rooms/{roomId}/messages
+```
+
+Retrieves message history from a conversation room, including both user messages and agent responses. Useful for displaying conversation history or analyzing interactions.
+
+## Request
+
+### Path Parameters
+
+<ParamField path="agentId" type="string" required>
+  Unique identifier (UUID) of the agent
+</ParamField>
+
+<ParamField path="roomId" type="string" required>
+  Unique identifier (UUID) of the room or conversation
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="limit" type="number" default="50">
+  Maximum number of messages to return (1-100)
+</ParamField>
+
+<ParamField query="offset" type="number" default="0">
+  Number of messages to skip for pagination
+</ParamField>
+
+<ParamField query="before" type="number">
+  Unix timestamp - retrieve messages before this time
+</ParamField>
+
+<ParamField query="after" type="number">
+  Unix timestamp - retrieve messages after this time
+</ParamField>
+
+<ParamField query="userId" type="string">
+  Filter messages by specific user ID
+</ParamField>
+
+### Headers
+
+<ParamField header="Authorization" type="string">
+  Bearer token for authentication (if required)
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+  Messages data
+  
+  <ResponseField name="data.messages" type="array" required>
+    Array of message objects
+    
+    <ResponseField name="data.messages[].id" type="string" required>
+      Unique message identifier (UUID)
+    </ResponseField>
+    
+    <ResponseField name="data.messages[].userId" type="string" required>
+      ID of the user who sent the message
+    </ResponseField>
+    
+    <ResponseField name="data.messages[].userName" type="string">
+      Display name of the user
+    </ResponseField>
+    
+    <ResponseField name="data.messages[].agentId" type="string">
+      Agent ID if the message is from an agent
+    </ResponseField>
+    
+    <ResponseField name="data.messages[].text" type="string" required>
+      Message text content
+    </ResponseField>
+    
+    <ResponseField name="data.messages[].roomId" type="string" required>
+      Room or conversation ID
+    </ResponseField>
+    
+    <ResponseField name="data.messages[].timestamp" type="number" required>
+      Unix timestamp when the message was created
+    </ResponseField>
+    
+    <ResponseField name="data.messages[].attachments" type="array">
+      Message attachments (images, files, etc.)
+    </ResponseField>
+    
+    <ResponseField name="data.messages[].metadata" type="object">
+      Additional message metadata
+    </ResponseField>
+  </ResponseField>
+  
+  <ResponseField name="data.hasMore" type="boolean">
+    Whether more messages are available
+  </ResponseField>
+  
+  <ResponseField name="data.total" type="number">
+    Total number of messages in the room
+  </ResponseField>
+</ResponseField>
+
+## Examples
+
+### Basic Request
+
+```bash
+curl -X GET "http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/rooms/room-660e8400-e29b-41d4-a716-446655440004/messages" \
+  -H "Content-Type: application/json"
+```
+
+### With Pagination
+
+```bash
+curl -X GET "http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/rooms/room-660e8400-e29b-41d4-a716-446655440004/messages?limit=20&offset=0" \
+  -H "Content-Type: application/json"
+```
+
+### Filter by Time Range
+
+```bash
+curl -X GET "http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/rooms/room-660e8400-e29b-41d4-a716-446655440004/messages?after=1709600000000&before=1709686400000" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Filter by User
+
+```bash
+curl -X GET "http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/rooms/room-660e8400-e29b-41d4-a716-446655440004/messages?userId=user-123" \
+  -H "Content-Type: application/json"
+```
+
+## Response Example
+
+### Success Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "messages": [
+      {
+        "id": "msg-550e8400-e29b-41d4-a716-446655440010",
+        "userId": "user-123",
+        "userName": "Alice Smith",
+        "text": "Hello! How can you help me today?",
+        "roomId": "room-660e8400-e29b-41d4-a716-446655440004",
+        "timestamp": 1709683200000,
+        "attachments": [],
+        "metadata": {
+          "channel": "web"
+        }
+      },
+      {
+        "id": "msg-550e8400-e29b-41d4-a716-446655440011",
+        "userId": "550e8400-e29b-41d4-a716-446655440000",
+        "agentId": "550e8400-e29b-41d4-a716-446655440000",
+        "userName": "Alice",
+        "text": "Hello! I'm here to help you with any questions you might have. I can assist with customer support, technical issues, and general information. What can I help you with today?",
+        "roomId": "room-660e8400-e29b-41d4-a716-446655440004",
+        "timestamp": 1709683205000,
+        "attachments": [],
+        "metadata": {}
+      },
+      {
+        "id": "msg-550e8400-e29b-41d4-a716-446655440012",
+        "userId": "user-123",
+        "userName": "Alice Smith",
+        "text": "What is the status of my order?",
+        "roomId": "room-660e8400-e29b-41d4-a716-446655440004",
+        "timestamp": 1709683260000,
+        "attachments": [],
+        "metadata": {
+          "orderId": "ORDER-456"
+        }
+      },
+      {
+        "id": "msg-550e8400-e29b-41d4-a716-446655440013",
+        "userId": "550e8400-e29b-41d4-a716-446655440000",
+        "agentId": "550e8400-e29b-41d4-a716-446655440000",
+        "userName": "Alice",
+        "text": "I've looked up your order status. Your order #ORDER-456 is currently being prepared for shipping.",
+        "roomId": "room-660e8400-e29b-41d4-a716-446655440004",
+        "timestamp": 1709683265000,
+        "attachments": [],
+        "metadata": {}
+      }
+    ],
+    "hasMore": false,
+    "total": 4
+  }
+}
+```
+
+## Code Examples
+
+### JavaScript/Node.js
+
+```javascript
+const agentId = "550e8400-e29b-41d4-a716-446655440000";
+const roomId = "room-660e8400-e29b-41d4-a716-446655440004";
+
+const getMessages = async (limit = 50, offset = 0) => {
+  const response = await fetch(
+    `http://localhost:3000/agents/${agentId}/rooms/${roomId}/messages?limit=${limit}&offset=${offset}`,
+    {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+  
+  const { success, data } = await response.json();
+  
+  if (success) {
+    console.log(`Retrieved ${data.messages.length} messages`);
+    data.messages.forEach(msg => {
+      const sender = msg.agentId ? 'Agent' : msg.userName;
+      console.log(`[${new Date(msg.timestamp).toLocaleString()}] ${sender}: ${msg.text}`);
+    });
+    return data;
+  }
+};
+
+// Get messages
+await getMessages(50, 0);
+```
+
+### Python
+
+```python
+import requests
+from datetime import datetime
+
+agent_id = "550e8400-e29b-41d4-a716-446655440000"
+room_id = "room-660e8400-e29b-41d4-a716-446655440004"
+
+def get_messages(limit: int = 50, offset: int = 0):
+    response = requests.get(
+        f'http://localhost:3000/agents/{agent_id}/rooms/{room_id}/messages',
+        params={'limit': limit, 'offset': offset}
+    )
+    
+    data = response.json()
+    
+    if data['success']:
+        messages = data['data']['messages']
+        print(f"Retrieved {len(messages)} messages")
+        
+        for msg in messages:
+            sender = 'Agent' if msg.get('agentId') else msg.get('userName', 'Unknown')
+            timestamp = datetime.fromtimestamp(msg['timestamp'] / 1000)
+            print(f"[{timestamp}] {sender}: {msg['text']}")
+        
+        return data['data']
+
+# Get messages
+get_messages(50, 0)
+```
+
+### TypeScript
+
+```typescript
+interface Message {
+  id: string;
+  userId: string;
+  userName?: string;
+  agentId?: string;
+  text: string;
+  roomId: string;
+  timestamp: number;
+  attachments?: any[];
+  metadata?: Record<string, any>;
+}
+
+interface GetMessagesResponse {
+  success: boolean;
+  data: {
+    messages: Message[];
+    hasMore: boolean;
+    total: number;
+  };
+}
+
+const getMessages = async (
+  agentId: string,
+  roomId: string,
+  limit: number = 50,
+  offset: number = 0
+): Promise<GetMessagesResponse> => {
+  const response = await fetch(
+    `http://localhost:3000/agents/${agentId}/rooms/${roomId}/messages?limit=${limit}&offset=${offset}`,
+    {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    }
+  );
+  
+  return await response.json();
+};
+
+// Usage
+const result = await getMessages(
+  "550e8400-e29b-41d4-a716-446655440000",
+  "room-660e8400-e29b-41d4-a716-446655440004",
+  50,
+  0
+);
+
+console.log(`Total messages: ${result.data.total}`);
+```
+
+## Error Responses
+
+### 404 Not Found
+
+```json
+{
+  "success": false,
+  "error": "Agent or room not found"
+}
+```
+
+### 400 Bad Request
+
+```json
+{
+  "success": false,
+  "error": "Invalid limit parameter. Must be between 1 and 100."
+}
+```
+
+### 500 Internal Server Error
+
+```json
+{
+  "success": false,
+  "error": "Failed to retrieve messages"
+}
+```
+
+## Pagination Example
+
+Load all messages using pagination:
+
+```javascript
+const getAllMessages = async (agentId, roomId) => {
+  const allMessages = [];
+  let offset = 0;
+  const limit = 50;
+  let hasMore = true;
+  
+  while (hasMore) {
+    const response = await fetch(
+      `http://localhost:3000/agents/${agentId}/rooms/${roomId}/messages?limit=${limit}&offset=${offset}`
+    );
+    
+    const { success, data } = await response.json();
+    
+    if (success) {
+      allMessages.push(...data.messages);
+      hasMore = data.hasMore;
+      offset += limit;
+    } else {
+      break;
+    }
+  }
+  
+  return allMessages;
+};
+```
+
+## Real-time Updates
+
+For real-time message updates, consider using WebSocket connections or polling:
+
+```javascript
+// Polling approach
+let lastTimestamp = Date.now();
+
+setInterval(async () => {
+  const response = await fetch(
+    `http://localhost:3000/agents/${agentId}/rooms/${roomId}/messages?after=${lastTimestamp}`
+  );
+  
+  const { success, data } = await response.json();
+  
+  if (success && data.messages.length > 0) {
+    // New messages received
+    data.messages.forEach(msg => {
+      console.log(`New message: ${msg.text}`);
+    });
+    
+    // Update timestamp
+    lastTimestamp = data.messages[data.messages.length - 1].timestamp;
+  }
+}, 5000); // Poll every 5 seconds
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Send Message" icon="paper-plane" href="/rest/messaging/send-message">
+    Send a new message to the conversation
+  </Card>
+  <Card title="Sessions" icon="clock" href="/rest/messaging/sessions">
+    Manage conversation sessions
+  </Card>
+  <Card title="Create Channel" icon="hashtag" href="/rest/messaging/create-channel">
+    Set up new communication channels
+  </Card>
+</CardGroup>

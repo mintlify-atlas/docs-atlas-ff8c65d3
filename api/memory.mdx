@@ -1,0 +1,444 @@
+---
+title: "Memory"
+description: "Memory types and utilities for storing and retrieving agent memories"
+---
+
+## Overview
+
+The Memory system in elizaOS stores and retrieves agent memories, messages, documents, and other data. Memories can be searched by embedding similarity, filtered by metadata, and organized into different tables.
+
+## Memory Type
+
+```typescript
+interface Memory {
+  id?: UUID;
+  createdAt?: number;
+  content: Content;
+  embedding?: number[];
+  entityId: UUID;
+  agentId?: UUID;
+  roomId: UUID;
+  worldId?: UUID;
+  metadata?: MemoryMetadata;
+  sessionId?: string;
+  sessionKey?: string;
+}
+```
+
+<ResponseField name="id" type="UUID">
+  Unique identifier for the memory
+</ResponseField>
+
+<ResponseField name="createdAt" type="number">
+  Unix timestamp (milliseconds) when memory was created
+</ResponseField>
+
+<ResponseField name="content" type="Content" required>
+  Memory content with text, actions, and metadata
+</ResponseField>
+
+<ResponseField name="embedding" type="number[]">
+  Vector embedding for semantic search
+</ResponseField>
+
+<ResponseField name="entityId" type="UUID" required>
+  ID of the entity that created this memory
+</ResponseField>
+
+<ResponseField name="agentId" type="UUID">
+  ID of the agent associated with this memory
+</ResponseField>
+
+<ResponseField name="roomId" type="UUID" required>
+  ID of the room/conversation this memory belongs to
+</ResponseField>
+
+<ResponseField name="worldId" type="UUID">
+  ID of the world/server this memory belongs to
+</ResponseField>
+
+<ResponseField name="metadata" type="MemoryMetadata">
+  Type-specific metadata (message, document, fragment, etc.)
+</ResponseField>
+
+<ResponseField name="sessionId" type="string">
+  Session UUID for filtering memories by conversation session
+</ResponseField>
+
+<ResponseField name="sessionKey" type="string">
+  Full session key for routing (e.g., "agent:123:telegram:+14155551234")
+</ResponseField>
+
+## MemoryType
+
+Built-in memory types:
+
+```typescript
+enum MemoryType {
+  DOCUMENT = "document",
+  FRAGMENT = "fragment",
+  MESSAGE = "message",
+  DESCRIPTION = "description",
+  CUSTOM = "custom"
+}
+```
+
+<ResponseField name="DOCUMENT" type="string">
+  Represents a whole document or large piece of text
+</ResponseField>
+
+<ResponseField name="FRAGMENT" type="string">
+  A chunk/segment of a DOCUMENT (for embedding and search)
+</ResponseField>
+
+<ResponseField name="MESSAGE" type="string">
+  A conversational message from user or agent
+</ResponseField>
+
+<ResponseField name="DESCRIPTION" type="string">
+  Descriptive information about an entity or concept
+</ResponseField>
+
+<ResponseField name="CUSTOM" type="string">
+  Custom memory type for extensions
+</ResponseField>
+
+## MemoryMetadata
+
+Memory metadata varies by type:
+
+### MessageMetadata
+
+```typescript
+interface MessageMetadata {
+  type?: "message";
+  timestamp?: number;
+  scope?: "shared" | "private" | "room";
+  sessionKey?: string;
+  sender?: SenderIdentity;
+  provider?: string;
+  chatType?: MessageChatType;
+  wasMentioned?: boolean;
+  // ... platform-specific fields
+}
+```
+
+<ResponseField name="sessionKey" type="string">
+  Session key for conversation routing
+</ResponseField>
+
+<ResponseField name="sender" type="SenderIdentity">
+  Sender information (id, name, username)
+</ResponseField>
+
+<ResponseField name="provider" type="string">
+  Platform name (telegram, discord, slack)
+</ResponseField>
+
+<ResponseField name="chatType" type="string">
+  Type of chat (dm, group, channel, thread)
+</ResponseField>
+
+### DocumentMetadata
+
+```typescript
+interface DocumentMetadata {
+  type?: "document";
+  source?: string;
+  sourceId?: UUID;
+  scope?: MemoryScope;
+}
+```
+
+### FragmentMetadata
+
+```typescript
+interface FragmentMetadata {
+  type?: "fragment";
+  documentId: UUID;
+  position: number;
+}
+```
+
+<ResponseField name="documentId" type="UUID" required>
+  ID of the parent document
+</ResponseField>
+
+<ResponseField name="position" type="number" required>
+  Position of fragment within document
+</ResponseField>
+
+## Functions
+
+### createMessageMemory
+
+Create a message memory.
+
+```typescript
+import { createMessageMemory } from "@elizaos/core";
+
+const memory = createMessageMemory({
+  entityId: userId,
+  agentId: agentId,
+  roomId: roomId,
+  content: {
+    text: "Hello, world!",
+    source: "telegram"
+  },
+  embedding: [0.1, 0.2, ...] // optional
+});
+```
+
+<ParamField path="params" type="object" required>
+  Memory creation parameters
+</ParamField>
+
+<ParamField path="params.entityId" type="UUID" required>
+  Entity that created the memory
+</ParamField>
+
+<ParamField path="params.agentId" type="UUID">
+  Associated agent ID
+</ParamField>
+
+<ParamField path="params.roomId" type="UUID" required>
+  Room/conversation ID
+</ParamField>
+
+<ParamField path="params.content" type="Content" required>
+  Memory content with text
+</ParamField>
+
+<ParamField path="params.embedding" type="number[]">
+  Vector embedding
+</ParamField>
+
+**Returns:** MessageMemory with metadata set.
+
+### Type Guards
+
+#### isDocumentMemory
+
+```typescript
+import { isDocumentMemory } from "@elizaos/core";
+
+if (isDocumentMemory(memory)) {
+  // memory.metadata is DocumentMetadata
+}
+```
+
+#### isFragmentMemory
+
+```typescript
+import { isFragmentMemory } from "@elizaos/core";
+
+if (isFragmentMemory(memory)) {
+  console.log(memory.metadata.documentId);
+  console.log(memory.metadata.position);
+}
+```
+
+#### isMessageMetadata
+
+```typescript
+import { isMessageMetadata } from "@elizaos/core";
+
+if (memory.metadata && isMessageMetadata(memory.metadata)) {
+  console.log(memory.metadata.sender);
+}
+```
+
+### getMemoryText
+
+Safely extract text from a memory.
+
+```typescript
+import { getMemoryText } from "@elizaos/core";
+
+const text = getMemoryText(memory, "default text");
+```
+
+<ParamField path="memory" type="Memory" required>
+  Memory object
+</ParamField>
+
+<ParamField path="defaultValue" type="string">
+  Default value if no text found (default: "")
+</ParamField>
+
+## Runtime Memory Operations
+
+The `AgentRuntime` provides methods for memory operations:
+
+### createMemory
+
+```typescript
+await runtime.createMemory(memory: Memory, tableName: string): Promise<void>
+```
+
+Store a memory in the database.
+
+<ParamField path="memory" type="Memory" required>
+  Memory to store
+</ParamField>
+
+<ParamField path="tableName" type="string" required>
+  Table name: "messages", "documents", "fragments", etc.
+</ParamField>
+
+**Example:**
+
+```typescript
+await runtime.createMemory(
+  {
+    entityId: userId,
+    roomId: roomId,
+    content: { text: "Hello!" }
+  },
+  "messages"
+);
+```
+
+### getMemories
+
+```typescript
+await runtime.getMemories(params: {
+  roomId: UUID;
+  count?: number;
+  unique?: boolean;
+  tableName: string;
+  agentId?: UUID;
+  start?: number;
+  end?: number;
+}): Promise<Memory[]>
+```
+
+Retrieve memories from the database.
+
+<ParamField path="roomId" type="UUID" required>
+  Room to get memories from
+</ParamField>
+
+<ParamField path="count" type="number">
+  Maximum number of memories to return
+</ParamField>
+
+<ParamField path="unique" type="boolean">
+  Only return unique memories (by entity)
+</ParamField>
+
+<ParamField path="tableName" type="string" required>
+  Table name to query
+</ParamField>
+
+<ParamField path="start" type="number">
+  Start timestamp (Unix milliseconds)
+</ParamField>
+
+<ParamField path="end" type="number">
+  End timestamp (Unix milliseconds)
+</ParamField>
+
+**Example:**
+
+```typescript
+const messages = await runtime.getMemories({
+  roomId: roomId,
+  count: 10,
+  tableName: "messages"
+});
+```
+
+### searchMemories
+
+```typescript
+await runtime.searchMemories(params: {
+  tableName: string;
+  roomId: UUID;
+  embedding: number[];
+  match_threshold?: number;
+  match_count?: number;
+  unique?: boolean;
+}): Promise<Memory[]>
+```
+
+Search memories by embedding similarity.
+
+<ParamField path="tableName" type="string" required>
+  Table to search
+</ParamField>
+
+<ParamField path="roomId" type="UUID" required>
+  Room to search in
+</ParamField>
+
+<ParamField path="embedding" type="number[]" required>
+  Query embedding vector
+</ParamField>
+
+<ParamField path="match_threshold" type="number">
+  Similarity threshold (0-1, default: 0.7)
+</ParamField>
+
+<ParamField path="match_count" type="number">
+  Maximum results to return (default: 10)
+</ParamField>
+
+**Example:**
+
+```typescript
+const queryEmbedding = await runtime.embed("search query");
+
+const similar = await runtime.searchMemories({
+  tableName: "documents",
+  roomId: roomId,
+  embedding: queryEmbedding,
+  match_threshold: 0.8,
+  match_count: 5
+});
+```
+
+## Example: Working with Memories
+
+```typescript
+import { 
+  AgentRuntime, 
+  createMessageMemory, 
+  getMemoryText 
+} from "@elizaos/core";
+
+// Create a message memory
+const memory = createMessageMemory({
+  entityId: userId,
+  roomId: roomId,
+  content: {
+    text: "What is TypeScript?",
+    source: "telegram"
+  }
+});
+
+// Store it
+await runtime.createMemory(memory, "messages");
+
+// Retrieve recent messages
+const recentMessages = await runtime.getMemories({
+  roomId: roomId,
+  count: 10,
+  tableName: "messages"
+});
+
+// Extract text safely
+for (const msg of recentMessages) {
+  const text = getMemoryText(msg);
+  console.log(text);
+}
+
+// Search by similarity
+const queryEmbed = await runtime.embed("programming languages");
+const relevantDocs = await runtime.searchMemories({
+  tableName: "documents",
+  roomId: roomId,
+  embedding: queryEmbed,
+  match_count: 3
+});
+```

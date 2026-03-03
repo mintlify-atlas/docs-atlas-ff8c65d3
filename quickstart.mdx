@@ -1,80 +1,579 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Build your first AI agent with elizaOS in under 5 minutes
 ---
 
-## Get started in three steps
+## Introduction
 
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide will walk you through creating a simple AI agent that can hold conversations and perform actions. By the end, you'll have a working agent running on your machine.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  **Prerequisites**: Make sure you've completed the [Installation](/installation) guide before starting.
 </Note>
+
+## Step 1: Create Your First Agent
+
+Let's create a simple conversational agent using the `AgentRuntime` from `@elizaos/core`.
+
+<Steps>
+  <Step title="Create a new TypeScript file">
+    In your project directory, create a file named `my-first-agent.ts`:
+    
+    ```bash
+    touch my-first-agent.ts
+    ```
+  </Step>
+  
+  <Step title="Import the core dependencies">
+    Open the file and add these imports:
+    
+    ```typescript my-first-agent.ts
+    import { AgentRuntime, corePlugin } from "@elizaos/core";
+    import { v4 as uuidv4 } from "uuid";
+    ```
+  </Step>
+  
+  <Step title="Define your agent's character">
+    Create a character configuration that defines your agent's personality and capabilities:
+    
+    ```typescript my-first-agent.ts
+    const character = {
+      name: "MyFirstAgent",
+      bio: [
+        "I am a helpful AI assistant built with elizaOS.",
+        "I can answer questions and help with various tasks.",
+      ],
+      topics: [
+        "technology",
+        "programming",
+        "artificial intelligence",
+      ],
+      adjectives: [
+        "helpful",
+        "friendly",
+        "knowledgeable",
+      ],
+      style: {
+        all: [
+          "be concise and clear",
+          "use examples when helpful",
+        ],
+        chat: [
+          "be conversational and friendly",
+        ],
+      },
+    };
+    ```
+    
+    <Tip>
+      The character configuration shapes your agent's personality. Experiment with different bio entries, topics, and style guidelines to create unique agents!
+    </Tip>
+  </Step>
+  
+  <Step title="Initialize the AgentRuntime">
+    Create and initialize your agent runtime:
+    
+    ```typescript my-first-agent.ts
+    async function main() {
+      // Create the runtime with your character and plugins
+      const runtime = new AgentRuntime({
+        character,
+        plugins: [
+          corePlugin, // Provides core actions, providers, and evaluators
+        ],
+      });
+      
+      // Initialize the runtime (loads plugins, connects to database, etc.)
+      await runtime.initialize();
+      
+      console.log(`✅ Agent "${character.name}" initialized and ready!`);
+      
+      return runtime;
+    }
+    
+    main().catch(console.error);
+    ```
+  </Step>
+</Steps>
+
+## Step 2: Add Conversation Handling
+
+Now let's make your agent interactive by adding the ability to process messages:
+
+<Steps>
+  <Step title="Create a message processing function">
+    Add this function to handle incoming messages:
+    
+    ```typescript my-first-agent.ts
+    async function sendMessage(
+      runtime: AgentRuntime,
+      text: string
+    ) {
+      // Create a unique room ID for the conversation
+      const roomId = uuidv4();
+      
+      // Create a user entity ID
+      const userId = uuidv4();
+      
+      // Create the message object
+      const message = {
+        entityId: userId,
+        roomId: roomId,
+        content: {
+          text: text,
+          type: "TEXT" as const,
+        },
+      };
+      
+      console.log(`\n👤 You: ${text}`);
+      
+      // Process the message through the runtime
+      const response = await runtime.handleMessage(message);
+      
+      console.log(`🤖 ${character.name}: ${response.responseContent.text}`);
+      
+      return response;
+    }
+    ```
+  </Step>
+  
+  <Step title="Test your agent">
+    Update your `main()` function to send a test message:
+    
+    ```typescript my-first-agent.ts
+    async function main() {
+      const runtime = new AgentRuntime({
+        character,
+        plugins: [corePlugin],
+      });
+      
+      await runtime.initialize();
+      
+      console.log(`✅ Agent "${character.name}" initialized and ready!`);
+      
+      // Send a test message
+      await sendMessage(
+        runtime,
+        "Hello! Can you tell me about elizaOS?"
+      );
+    }
+    
+    main().catch(console.error);
+    ```
+  </Step>
+  
+  <Step title="Run your agent">
+    Execute your agent with bun:
+    
+    ```bash
+    OPENAI_API_KEY=your-key-here bun run my-first-agent.ts
+    ```
+    
+    You should see output like:
+    ```
+    ✅ Agent "MyFirstAgent" initialized and ready!
+    
+    👤 You: Hello! Can you tell me about elizaOS?
+    🤖 MyFirstAgent: elizaOS is an open-source framework for building...
+    ```
+  </Step>
+</Steps>
+
+## Step 3: Make It Interactive
+
+Let's add a CLI interface so you can have real conversations with your agent:
+
+<Steps>
+  <Step title="Add readline for user input">
+    Import Node.js readline at the top of your file:
+    
+    ```typescript my-first-agent.ts
+    import { createInterface } from "node:readline";
+    ```
+  </Step>
+  
+  <Step title="Create an interactive loop">
+    Add this interactive function:
+    
+    ```typescript my-first-agent.ts
+    async function startChat(runtime: AgentRuntime) {
+      const rl = createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+      
+      const roomId = uuidv4();
+      const userId = uuidv4();
+      
+      console.log("\n💬 Chat started! Type 'exit' to quit.\n");
+      
+      const ask = () => {
+        rl.question("You: ", async (input) => {
+          const text = input.trim();
+          
+          if (text.toLowerCase() === "exit") {
+            console.log("\n👋 Goodbye!");
+            rl.close();
+            process.exit(0);
+          }
+          
+          if (text) {
+            const message = {
+              entityId: userId,
+              roomId: roomId,
+              content: { text, type: "TEXT" as const },
+            };
+            
+            const response = await runtime.handleMessage(message);
+            console.log(`${character.name}: ${response.responseContent.text}\n`);
+          }
+          
+          ask(); // Continue the conversation
+        });
+      };
+      
+      ask();
+    }
+    ```
+  </Step>
+  
+  <Step title="Update main() to start the chat">
+    ```typescript my-first-agent.ts
+    async function main() {
+      const runtime = new AgentRuntime({
+        character,
+        plugins: [corePlugin],
+      });
+      
+      await runtime.initialize();
+      
+      console.log(`✅ Agent "${character.name}" initialized and ready!`);
+      
+      // Start interactive chat
+      await startChat(runtime);
+    }
+    
+    main().catch(console.error);
+    ```
+  </Step>
+  
+  <Step title="Run the interactive agent">
+    ```bash
+    OPENAI_API_KEY=your-key-here bun run my-first-agent.ts
+    ```
+    
+    Now you can have a full conversation:
+    ```
+    ✅ Agent "MyFirstAgent" initialized and ready!
+    💬 Chat started! Type 'exit' to quit.
+    
+    You: What is elizaOS?
+    MyFirstAgent: elizaOS is an open-source framework...
+    
+    You: How do I add plugins?
+    MyFirstAgent: You can add plugins to your AgentRuntime...
+    ```
+  </Step>
+</Steps>
+
+## Step 4: Add Custom Actions
+
+Let's extend your agent with a custom action that can perform a specific task:
+
+<Steps>
+  <Step title="Define a custom action">
+    Add this custom action that tells the current time:
+    
+    ```typescript my-first-agent.ts
+    const timeAction = {
+      name: "GET_TIME",
+      description: "Returns the current date and time when the user asks for it.",
+      
+      validate: async (context: any) => {
+        // Check if the message is asking about time
+        const text = context.message?.content?.text?.toLowerCase() || "";
+        return text.includes("time") || text.includes("date");
+      },
+      
+      handler: async (context: any) => {
+        const now = new Date();
+        const timeString = now.toLocaleString();
+        
+        return {
+          success: true,
+          message: `The current time is ${timeString}`,
+        };
+      },
+      
+      examples: [[
+        {
+          user: "user",
+          content: { text: "What time is it?" },
+        },
+        {
+          user: "assistant",
+          content: { 
+            text: "The current time is 3:45 PM on March 3, 2026",
+            action: "GET_TIME",
+          },
+        },
+      ]],
+    };
+    ```
+  </Step>
+  
+  <Step title="Create a custom plugin">
+    Wrap your action in a plugin:
+    
+    ```typescript my-first-agent.ts
+    const customPlugin = {
+      name: "custom-plugin",
+      description: "My custom actions",
+      actions: [timeAction],
+    };
+    ```
+  </Step>
+  
+  <Step title="Add the plugin to your runtime">
+    ```typescript my-first-agent.ts
+    const runtime = new AgentRuntime({
+      character,
+      plugins: [
+        corePlugin,
+        customPlugin, // Add your custom plugin
+      ],
+    });
+    ```
+  </Step>
+  
+  <Step title="Test your custom action">
+    Run your agent and ask for the time:
+    
+    ```bash
+    OPENAI_API_KEY=your-key-here bun run my-first-agent.ts
+    ```
+    
+    ```
+    You: What time is it?
+    MyFirstAgent: The current time is 3:45 PM on March 3, 2026
+    ```
+  </Step>
+</Steps>
+
+## Complete Example
+
+Here's the complete code for your first agent:
+
+<CodeGroup>
+```typescript my-first-agent.ts
+import { AgentRuntime, corePlugin } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import { createInterface } from "node:readline";
+
+const character = {
+  name: "MyFirstAgent",
+  bio: [
+    "I am a helpful AI assistant built with elizaOS.",
+    "I can answer questions and help with various tasks.",
+  ],
+  topics: ["technology", "programming", "artificial intelligence"],
+  adjectives: ["helpful", "friendly", "knowledgeable"],
+  style: {
+    all: ["be concise and clear", "use examples when helpful"],
+    chat: ["be conversational and friendly"],
+  },
+};
+
+const timeAction = {
+  name: "GET_TIME",
+  description: "Returns the current date and time when the user asks for it.",
+  validate: async (context: any) => {
+    const text = context.message?.content?.text?.toLowerCase() || "";
+    return text.includes("time") || text.includes("date");
+  },
+  handler: async (context: any) => {
+    const now = new Date();
+    return {
+      success: true,
+      message: `The current time is ${now.toLocaleString()}`,
+    };
+  },
+  examples: [[
+    { user: "user", content: { text: "What time is it?" } },
+    { 
+      user: "assistant", 
+      content: { 
+        text: "The current time is 3:45 PM on March 3, 2026",
+        action: "GET_TIME",
+      },
+    },
+  ]],
+};
+
+const customPlugin = {
+  name: "custom-plugin",
+  description: "My custom actions",
+  actions: [timeAction],
+};
+
+async function startChat(runtime: AgentRuntime) {
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  
+  const roomId = uuidv4();
+  const userId = uuidv4();
+  
+  console.log("\n💬 Chat started! Type 'exit' to quit.\n");
+  
+  const ask = () => {
+    rl.question("You: ", async (input) => {
+      const text = input.trim();
+      
+      if (text.toLowerCase() === "exit") {
+        console.log("\n👋 Goodbye!");
+        rl.close();
+        process.exit(0);
+      }
+      
+      if (text) {
+        const message = {
+          entityId: userId,
+          roomId: roomId,
+          content: { text, type: "TEXT" as const },
+        };
+        
+        const response = await runtime.handleMessage(message);
+        console.log(`${character.name}: ${response.responseContent.text}\n`);
+      }
+      
+      ask();
+    });
+  };
+  
+  ask();
+}
+
+async function main() {
+  const runtime = new AgentRuntime({
+    character,
+    plugins: [corePlugin, customPlugin],
+  });
+  
+  await runtime.initialize();
+  
+  console.log(`✅ Agent "${character.name}" initialized and ready!`);
+  
+  await startChat(runtime);
+}
+
+main().catch(console.error);
+```
+
+```bash Run the agent
+OPENAI_API_KEY=your-key-here bun run my-first-agent.ts
+```
+</CodeGroup>
+
+## Using WASM Runtime (Alternative)
+
+You can also use the Rust-based WASM runtime for better performance:
+
+<CodeGroup>
+```typescript wasm-agent.ts
+import * as elizaos from "@elizaos/rust/pkg-node/elizaos.js";
+import { createInterface } from "node:readline";
+
+async function main() {
+  console.log("=== elizaOS WASM Chat ===");
+
+  const runtime = elizaos.WasmAgentRuntime.create(
+    JSON.stringify({
+      name: "WasmBot",
+      bio: "A fast chat bot running on WASM",
+      system: "Be friendly and concise.",
+    })
+  );
+  await runtime.initialize();
+
+  const handler = new elizaos.JsModelHandler({
+    handle: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson);
+      const prompt = params.prompt ?? "";
+      // Your model logic here
+      return `Echo: ${prompt}`;
+    },
+  });
+
+  runtime.registerModelHandler("TEXT_LARGE", handler);
+
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  while (true) {
+    const input = await new Promise<string>((resolve) =>
+      rl.question("You: ", resolve)
+    );
+    
+    if (input.toLowerCase() === "exit") break;
+
+    const messageJson = JSON.stringify({
+      entityId: elizaos.generateUUID(),
+      roomId: elizaos.generateUUID(),
+      content: { text: input },
+    });
+
+    const responseJson = await runtime.handleMessage(messageJson);
+    const response = JSON.parse(responseJson);
+
+    console.log(`Bot: ${response.responseContent.text}`);
+  }
+
+  rl.close();
+}
+
+main().catch(console.error);
+```
+</CodeGroup>
+
+## Next Steps
+
+Congratulations! You've built your first AI agent with elizaOS. Here's what to explore next:
+
+<CardGroup cols={2}>
+  <Card
+    title="What You Can Build"
+    icon="lightbulb"
+    href="/what-you-can-build"
+  >
+    Discover use cases from chatbots to autonomous agents
+  </Card>
+  <Card
+    title="Core Concepts"
+    icon="book"
+    href="/concepts/overview"
+  >
+    Deep dive into AgentRuntime, Actions, and Providers
+  </Card>
+  <Card
+    title="Add Plugins"
+    icon="plug"
+    href="/concepts/plugins"
+  >
+    Integrate Discord, Telegram, databases, and more
+  </Card>
+  <Card
+    title="Examples"
+    icon="code"
+    href="/examples"
+  >
+    Browse more complete examples and templates
+  </Card>
+</CardGroup>
+
+<Tip>
+  Join our [Discord community](https://discord.gg/ai16z) to share your agent and get help from other developers!
+</Tip>

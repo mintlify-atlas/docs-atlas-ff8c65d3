@@ -1,0 +1,649 @@
+---
+title: "Browser Integration"
+description: "Run elizaOS agents directly in web browsers"
+---
+
+Integrate elizaOS agents into web applications running entirely in the browser. This example shows how to build chat interfaces, handle user interactions, and manage state client-side.
+
+## Overview
+
+Running agents in the browser enables instant interactions, offline capability, and reduced server costs. Perfect for web apps, Chrome extensions, and Progressive Web Apps.
+
+**What you'll learn:**
+- Set up elizaOS for browser environments
+- Build a React chat interface
+- Use local storage for persistence
+- Handle real-time streaming
+- Implement offline support
+
+---
+
+## Quick Start
+
+<Steps>
+  <Step title="Create React App">
+    ```bash
+    bun create vite eliza-chat --template react-ts
+    cd eliza-chat
+    ```
+  </Step>
+  
+  <Step title="Install Dependencies">
+    ```bash
+    bun add @elizaos/core @elizaos/plugin-openai
+    ```
+  </Step>
+  
+  <Step title="Create Chat Component">
+    Build a chat interface with elizaOS integration
+  </Step>
+  
+  <Step title="Run Development Server">
+    ```bash
+    bun dev
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Complete Example
+
+### Runtime Setup
+
+```typescript src/lib/eliza.ts
+import { AgentRuntime } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+
+let runtime: AgentRuntime | null = null;
+
+export async function getRuntime(): Promise<AgentRuntime> {
+  if (runtime) return runtime;
+
+  // Create runtime with browser-compatible plugins
+  runtime = new AgentRuntime({
+    character: {
+      name: "Eliza",
+      bio: "A helpful AI assistant running in your browser.",
+      system: "You are a friendly and helpful assistant.",
+    },
+    plugins: [openaiPlugin],
+  });
+
+  await runtime.initialize();
+  return runtime;
+}
+
+export async function sendMessage(
+  message: string,
+  onChunk?: (text: string) => void
+): Promise<string> {
+  const runtime = await getRuntime();
+
+  // Use the runtime's model directly
+  if (onChunk) {
+    let fullResponse = "";
+    // Streaming not directly supported in browser, simulate chunks
+    const response = await runtime.useModel("TEXT_LARGE", {
+      prompt: message,
+    });
+    
+    fullResponse = String(response);
+    
+    // Simulate streaming by breaking into chunks
+    const words = fullResponse.split(" ");
+    for (let i = 0; i < words.length; i++) {
+      const chunk = words[i] + " ";
+      onChunk(chunk);
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    
+    return fullResponse;
+  } else {
+    const response = await runtime.useModel("TEXT_LARGE", {
+      prompt: message,
+    });
+    return String(response);
+  }
+}
+```
+
+### Chat Component
+
+```tsx src/components/Chat.tsx
+import { useState, useEffect, useRef } from "react";
+import { sendMessage } from "../lib/eliza";
+
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+}
+
+export function Chat() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Load messages from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("chat-messages");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      setMessages(
+        parsed.map((m: any) => ({
+          ...m,
+          timestamp: new Date(m.timestamp),
+        }))
+      );
+    }
+  }, []);
+
+  // Save messages to localStorage
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem("chat-messages", JSON.stringify(messages));
+    }
+  }, [messages]);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const handleSend = async () => {
+    if (!input.trim() || loading) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: input.trim(),
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setLoading(true);
+
+    // Create assistant message placeholder
+    const assistantId = (Date.now() + 1).toString();
+    const assistantMessage: Message = {
+      id: assistantId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, assistantMessage]);
+
+    try {
+      // Send message with streaming
+      await sendMessage(userMessage.content, (chunk) => {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantId
+              ? { ...msg, content: msg.content + chunk }
+              : msg
+          )
+        );
+      });
+    } catch (error) {
+      console.error("Error:", error);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantId
+            ? { ...msg, content: "Sorry, an error occurred." }
+            : msg
+        )
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const clearHistory = () => {
+    setMessages([]);
+    localStorage.removeItem("chat-messages");
+  };
+
+  return (
+    <div className="chat-container">
+      <div className="chat-header">
+        <h1>Eliza Chat</h1>
+        <button onClick={clearHistory} className="clear-btn">
+          Clear History
+        </button>
+      </div>
+
+      <div className="messages">
+        {messages.length === 0 && (
+          <div className="empty-state">
+            <p>Start a conversation with Eliza!</p>
+          </div>
+        )}
+
+        {messages.map((message) => (
+          <div key={message.id} className={`message ${message.role}`}>
+            <div className="message-header">
+              <strong>{message.role === "user" ? "You" : "Eliza"}</strong>
+              <span className="timestamp">
+                {message.timestamp.toLocaleTimeString()}
+              </span>
+            </div>
+            <div className="message-content">{message.content}</div>
+          </div>
+        ))}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      <div className="input-container">
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyPress={handleKeyPress}
+          placeholder="Type your message..."
+          disabled={loading}
+          rows={2}
+        />
+        <button onClick={handleSend} disabled={loading || !input.trim()}>
+          {loading ? "Sending..." : "Send"}
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+### Styling
+
+```css src/App.css
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-width: 800px;
+  margin: 0 auto;
+  background: #f5f5f5;
+}
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: white;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.chat-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.clear-btn {
+  padding: 0.5rem 1rem;
+  background: #ff5252;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.clear-btn:hover {
+  background: #ff1744;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+}
+
+.message {
+  padding: 1rem;
+  border-radius: 8px;
+  max-width: 80%;
+}
+
+.message.user {
+  align-self: flex-end;
+  background: #2196f3;
+  color: white;
+}
+
+.message.assistant {
+  align-self: flex-start;
+  background: white;
+  border: 1px solid #e0e0e0;
+}
+
+.message-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.timestamp {
+  opacity: 0.7;
+  font-size: 0.75rem;
+}
+
+.message-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.input-container {
+  display: flex;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: white;
+  border-top: 1px solid #e0e0e0;
+}
+
+.input-container textarea {
+  flex: 1;
+  padding: 0.75rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  resize: none;
+  font-family: inherit;
+  font-size: 1rem;
+}
+
+.input-container button {
+  padding: 0.75rem 1.5rem;
+  background: #2196f3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.input-container button:hover:not(:disabled) {
+  background: #1976d2;
+}
+
+.input-container button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+```
+
+### App Setup
+
+```tsx src/App.tsx
+import { Chat } from "./components/Chat";
+import "./App.css";
+
+function App() {
+  return <Chat />;
+}
+
+export default App;
+```
+
+---
+
+## Environment Configuration
+
+Create `.env` file:
+
+```bash
+VITE_OPENAI_API_KEY=your-key-here
+```
+
+Update runtime to use environment variable:
+
+```typescript
+runtime = new AgentRuntime({
+  character: {
+    name: "Eliza",
+    bio: "A helpful AI assistant.",
+    secrets: {
+      OPENAI_API_KEY: import.meta.env.VITE_OPENAI_API_KEY,
+    },
+  },
+  plugins: [openaiPlugin],
+});
+```
+
+---
+
+## Advanced Features
+
+### Conversation Context
+
+Maintain conversation history:
+
+```typescript
+import { createMessageMemory, stringToUuid } from "@elizaos/core";
+
+const conversationId = stringToUuid("browser-chat");
+const userId = stringToUuid("user-" + Date.now());
+
+export async function sendMessageWithContext(
+  message: string,
+  messages: Message[]
+): Promise<string> {
+  const runtime = await getRuntime();
+
+  // Create message with full context
+  const context = messages
+    .slice(-5) // Last 5 messages
+    .map((m) => `${m.role}: ${m.content}`)
+    .join("\n");
+
+  const fullPrompt = `Conversation history:\n${context}\n\nUser: ${message}\n\nAssistant:`;
+
+  const response = await runtime.useModel("TEXT_LARGE", {
+    prompt: fullPrompt,
+  });
+
+  return String(response);
+}
+```
+
+### IndexedDB Storage
+
+Use IndexedDB for larger data:
+
+```typescript
+class ChatStorage {
+  private db: IDBDatabase | null = null;
+
+  async init() {
+    return new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open("ElizaChat", 1);
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve();
+      };
+
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        db.createObjectStore("messages", { keyPath: "id" });
+      };
+    });
+  }
+
+  async saveMessage(message: Message) {
+    const tx = this.db!.transaction("messages", "readwrite");
+    await tx.objectStore("messages").add(message);
+  }
+
+  async getMessages(): Promise<Message[]> {
+    const tx = this.db!.transaction("messages", "readonly");
+    const request = tx.objectStore("messages").getAll();
+    return new Promise((resolve) => {
+      request.onsuccess = () => resolve(request.result);
+    });
+  }
+}
+```
+
+### Offline Support
+
+Use service worker for offline capability:
+
+```typescript
+// public/service-worker.js
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open("eliza-v1").then((cache) => {
+      return cache.addAll(["/", "/index.html", "/assets/index.js"]);
+    })
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  event.respondWith(
+    caches.match(event.request).then((response) => {
+      return response || fetch(event.request);
+    })
+  );
+});
+```
+
+Register in your app:
+
+```typescript
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/service-worker.js");
+}
+```
+
+### Voice Input
+
+Add speech recognition:
+
+```typescript
+function useVoiceInput(onResult: (text: string) => void) {
+  const recognition = new (window as any).webkitSpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  recognition.onresult = (event: any) => {
+    const text = event.results[0][0].transcript;
+    onResult(text);
+  };
+
+  const start = () => recognition.start();
+  const stop = () => recognition.stop();
+
+  return { start, stop };
+}
+```
+
+Use in component:
+
+```tsx
+const { start, stop } = useVoiceInput((text) => {
+  setInput(text);
+});
+
+<button onClick={start}>🎤 Start Recording</button>
+```
+
+### Text-to-Speech
+
+Add voice output:
+
+```typescript
+function speak(text: string) {
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
+  utterance.volume = 1.0;
+  speechSynthesis.speak(utterance);
+}
+```
+
+---
+
+## Chrome Extension
+
+Turn your chat into a Chrome extension:
+
+```json manifest.json
+{
+  "manifest_version": 3,
+  "name": "Eliza Chat",
+  "version": "1.0",
+  "description": "AI assistant in your browser",
+  "action": {
+    "default_popup": "index.html",
+    "default_icon": "icon.png"
+  },
+  "permissions": ["storage"],
+  "host_permissions": ["https://api.openai.com/*"]
+}
+```
+
+---
+
+## Best Practices
+
+<Tip>
+**API Key Security**: Never expose API keys in client code. Use a backend proxy for production.
+</Tip>
+
+<Tip>
+**Error Handling**: Implement robust error handling for network issues and API failures.
+</Tip>
+
+<Tip>
+**Loading States**: Show clear loading indicators during API calls.
+</Tip>
+
+<Tip>
+**Responsive Design**: Ensure your chat works on mobile devices.
+</Tip>
+
+<Tip>
+**Accessibility**: Add proper ARIA labels and keyboard navigation.
+</Tip>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="REST API Server" icon="server" href="/examples/rest-api-server">
+    Build a backend for your browser app
+  </Card>
+  <Card title="Multi-Agent" icon="users" href="/examples/multi-agent">
+    Run multiple agents in the browser
+  </Card>
+  <Card title="Custom Character" icon="user" href="/examples/custom-character">
+    Create unique chat personalities
+  </Card>
+  <Card title="Deploy Guide" icon="rocket" href="/guides/deploy-a-project">
+    Deploy your web app
+  </Card>
+</CardGroup>

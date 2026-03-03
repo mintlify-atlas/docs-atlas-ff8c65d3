@@ -1,0 +1,717 @@
+---
+title: "Serverless Deployment"
+description: "Deploy elizaOS agents to AWS Lambda, Vercel, and Cloudflare Workers"
+---
+
+Deploy your elizaOS agents as serverless functions for automatic scaling, pay-per-use pricing, and global distribution. This example covers AWS Lambda, Vercel Edge, and Cloudflare Workers.
+
+## Overview
+
+Serverless platforms let you run agents without managing servers, scaling automatically with demand and charging only for actual usage.
+
+**What you'll learn:**
+- Deploy to AWS Lambda
+- Deploy to Vercel Edge Functions
+- Deploy to Cloudflare Workers
+- Handle cold starts
+- Optimize for performance
+
+---
+
+## Quick Comparison
+
+| Platform | Cold Start | Runtime | Free Tier | Best For |
+|----------|-----------|---------|-----------|----------|
+| AWS Lambda | 1-3s | Node, Python, Rust | 1M requests/month | Complex workflows |
+| Vercel Edge | &lt;50ms | Node, Edge | 100K requests/month | Web apps |
+| Cloudflare Workers | &lt;10ms | Edge Runtime | 100K requests/day | Global distribution |
+
+---
+
+## AWS Lambda
+
+### Setup
+
+<Steps>
+  <Step title="Install AWS SAM CLI">
+    ```bash
+    brew install aws-sam-cli  # macOS
+    # or follow: https://docs.aws.amazon.com/serverless-application-model/
+    ```
+  </Step>
+  
+  <Step title="Create Project">
+    ```bash
+    mkdir eliza-lambda && cd eliza-lambda
+    bun init
+    bun add @elizaos/core @elizaos/plugin-openai @elizaos/plugin-sql
+    ```
+  </Step>
+  
+  <Step title="Create Handler">
+    Create `index.ts` with Lambda handler
+  </Step>
+  
+  <Step title="Deploy">
+    ```bash
+    sam build && sam deploy --guided
+    ```
+  </Step>
+</Steps>
+
+### Lambda Handler
+
+```typescript index.ts
+import {
+  APIGatewayProxyEvent,
+  APIGatewayProxyResult,
+  Context,
+} from "aws-lambda";
+import {
+  AgentRuntime,
+  createMessageMemory,
+  stringToUuid,
+} from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import { v4 as uuidv4 } from "uuid";
+
+// Global runtime instance (survives across invocations)
+let runtime: AgentRuntime | null = null;
+
+async function getRuntime(): Promise<AgentRuntime> {
+  if (runtime) {
+    console.log("Reusing existing runtime (warm start)");
+    return runtime;
+  }
+
+  console.log("Initializing new runtime (cold start)");
+
+  runtime = new AgentRuntime({
+    character: {
+      name: process.env.CHARACTER_NAME || "Eliza",
+      bio: process.env.CHARACTER_BIO || "A helpful AI assistant.",
+    },
+    plugins: [sqlPlugin, openaiPlugin],
+  });
+
+  await runtime.initialize();
+  return runtime;
+}
+
+export async function handler(
+  event: APIGatewayProxyEvent,
+  context: Context
+): Promise<APIGatewayProxyResult> {
+  const headers = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  };
+
+  try {
+    // Health check
+    if (event.path === "/health") {
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          status: "healthy",
+          requestId: context.requestId,
+          runtime: "aws-lambda",
+        }),
+      };
+    }
+
+    // Handle OPTIONS for CORS
+    if (event.httpMethod === "OPTIONS") {
+      return { statusCode: 200, headers, body: "" };
+    }
+
+    // Chat endpoint
+    if (event.path === "/chat" && event.httpMethod === "POST") {
+      const runtime = await getRuntime();
+      const body = JSON.parse(event.body || "{}");
+      const { message, userId, conversationId } = body;
+
+      if (!message) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ error: "Message is required" }),
+        };
+      }
+
+      // Create message
+      const messageMemory = createMessageMemory({
+        id: uuidv4(),
+        entityId: stringToUuid(userId || uuidv4()),
+        roomId: stringToUuid(conversationId || "default"),
+        content: { text: message },
+      });
+
+      // Get response
+      let responseText = "";
+      await runtime.messageService!.handleMessage(
+        runtime,
+        messageMemory,
+        async (content) => {
+          if (content?.text) {
+            responseText += content.text;
+          }
+          return [];
+        }
+      );
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          response: responseText,
+          userId,
+          conversationId,
+          timestamp: new Date().toISOString(),
+        }),
+      };
+    }
+
+    return {
+      statusCode: 404,
+      headers,
+      body: JSON.stringify({ error: "Not found" }),
+    };
+  } catch (error) {
+    console.error("Error:", error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+    };
+  }
+}
+```
+
+### SAM Template
+
+```yaml template.yaml
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: elizaOS Lambda Function
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Environment:
+      Variables:
+        OPENAI_API_KEY: !Ref OpenAIApiKey
+
+Parameters:
+  OpenAIApiKey:
+    Type: String
+    Description: OpenAI API Key
+    NoEcho: true
+
+Resources:
+  ElizaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - arm64
+      Events:
+        Chat:
+          Type: Api
+          Properties:
+            Path: /chat
+            Method: post
+        Health:
+          Type: Api
+          Properties:
+            Path: /health
+            Method: get
+
+Outputs:
+  ApiUrl:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+```
+
+### Deploy
+
+```bash
+# Build
+sam build
+
+# Deploy
+sam deploy --guided \
+  --parameter-overrides OpenAIApiKey=$OPENAI_API_KEY
+
+# Test
+curl -X POST https://your-api-id.execute-api.us-east-1.amazonaws.com/Prod/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+
+---
+
+## Vercel Edge Functions
+
+### Setup
+
+<Steps>
+  <Step title="Install Vercel CLI">
+    ```bash
+    bun add -g vercel
+    ```
+  </Step>
+  
+  <Step title="Create Project">
+    ```bash
+    mkdir eliza-vercel && cd eliza-vercel
+    bun init
+    bun add @elizaos/core @elizaos/plugin-openai
+    ```
+  </Step>
+  
+  <Step title="Create API Route">
+    Create `api/chat.ts`
+  </Step>
+  
+  <Step title="Deploy">
+    ```bash
+    vercel
+    ```
+  </Step>
+</Steps>
+
+### Edge Function
+
+```typescript api/chat.ts
+import { AgentRuntime, ModelType } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+
+// Edge runtime configuration
+export const config = {
+  runtime: "edge",
+};
+
+// Global runtime (persists across requests)
+let runtime: AgentRuntime | null = null;
+
+async function getRuntime(): Promise<AgentRuntime> {
+  if (runtime) return runtime;
+
+  runtime = new AgentRuntime({
+    character: {
+      name: "Eliza",
+      bio: "A helpful AI assistant.",
+    },
+    plugins: [openaiPlugin],
+  });
+
+  await runtime.initialize();
+  return runtime;
+}
+
+export default async function handler(request: Request) {
+  // CORS headers
+  const headers = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
+
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 200, headers });
+  }
+
+  if (request.method !== "POST") {
+    return new Response(
+      JSON.stringify({ error: "Method not allowed" }),
+      { status: 405, headers }
+    );
+  }
+
+  try {
+    const runtime = await getRuntime();
+    const { message } = await request.json();
+
+    if (!message) {
+      return new Response(
+        JSON.stringify({ error: "Message is required" }),
+        { status: 400, headers }
+      );
+    }
+
+    const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt: message,
+    });
+
+    return new Response(
+      JSON.stringify({
+        response: String(response),
+        timestamp: new Date().toISOString(),
+      }),
+      { status: 200, headers }
+    );
+  } catch (error) {
+    console.error("Error:", error);
+    return new Response(
+      JSON.stringify({ error: "Internal server error" }),
+      { status: 500, headers }
+    );
+  }
+}
+```
+
+### Configuration
+
+```json vercel.json
+{
+  "functions": {
+    "api/**/*.ts": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  },
+  "env": {
+    "OPENAI_API_KEY": "@openai-api-key"
+  }
+}
+```
+
+### Deploy
+
+```bash
+# Set environment variable
+vercel env add OPENAI_API_KEY
+
+# Deploy
+vercel --prod
+
+# Test
+curl -X POST https://your-project.vercel.app/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+
+---
+
+## Cloudflare Workers
+
+### Setup
+
+<Steps>
+  <Step title="Install Wrangler">
+    ```bash
+    bun add -g wrangler
+    ```
+  </Step>
+  
+  <Step title="Create Project">
+    ```bash
+    wrangler init eliza-worker
+    cd eliza-worker
+    bun add @elizaos/core @elizaos/plugin-openai
+    ```
+  </Step>
+  
+  <Step title="Create Worker">
+    Create `src/index.ts`
+  </Step>
+  
+  <Step title="Deploy">
+    ```bash
+    wrangler deploy
+    ```
+  </Step>
+</Steps>
+
+### Worker Code
+
+```typescript src/index.ts
+import { AgentRuntime, ModelType } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+
+export interface Env {
+  OPENAI_API_KEY: string;
+}
+
+let runtime: AgentRuntime | null = null;
+
+async function getRuntime(env: Env): Promise<AgentRuntime> {
+  if (runtime) return runtime;
+
+  runtime = new AgentRuntime({
+    character: {
+      name: "Eliza",
+      bio: "A helpful AI assistant.",
+      secrets: {
+        OPENAI_API_KEY: env.OPENAI_API_KEY,
+      },
+    },
+    plugins: [openaiPlugin],
+  });
+
+  await runtime.initialize();
+  return runtime;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const headers = {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+    };
+
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 200, headers });
+    }
+
+    if (request.method !== "POST") {
+      return new Response(
+        JSON.stringify({ error: "Method not allowed" }),
+        { status: 405, headers }
+      );
+    }
+
+    try {
+      const runtime = await getRuntime(env);
+      const { message } = await request.json();
+
+      if (!message) {
+        return new Response(
+          JSON.stringify({ error: "Message is required" }),
+          { status: 400, headers }
+        );
+      }
+
+      const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt: message,
+      });
+
+      return new Response(
+        JSON.stringify({
+          response: String(response),
+          timestamp: new Date().toISOString(),
+          edge: request.cf?.colo, // Cloudflare edge location
+        }),
+        { status: 200, headers }
+      );
+    } catch (error) {
+      console.error("Error:", error);
+      return new Response(
+        JSON.stringify({ error: "Internal server error" }),
+        { status: 500, headers }
+      );
+    }
+  },
+};
+```
+
+### Configuration
+
+```toml wrangler.toml
+name = "eliza-worker"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[env.production]
+vars = { ENVIRONMENT = "production" }
+```
+
+### Deploy
+
+```bash
+# Set secret
+wrangler secret put OPENAI_API_KEY
+
+# Deploy
+wrangler deploy
+
+# Test
+curl -X POST https://eliza-worker.your-subdomain.workers.dev \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+
+---
+
+## Performance Optimization
+
+### Minimize Cold Starts
+
+```typescript
+// Pre-initialize heavy dependencies
+const pluginsPromise = Promise.all([
+  import("@elizaos/plugin-openai"),
+  import("@elizaos/plugin-sql"),
+]);
+
+async function getRuntime() {
+  const [openaiPlugin, sqlPlugin] = await pluginsPromise;
+  // ... create runtime
+}
+```
+
+### Use Smaller Models
+
+```typescript
+// For serverless, prefer faster models
+const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+  prompt: message,
+  maxTokens: 150, // Limit response length
+  temperature: 0.7,
+});
+```
+
+### Connection Pooling
+
+```typescript
+// Reuse database connections
+let dbConnection: any = null;
+
+async function getConnection() {
+  if (dbConnection) return dbConnection;
+  dbConnection = await createConnection();
+  return dbConnection;
+}
+```
+
+### Response Streaming
+
+For long responses, use streaming:
+
+```typescript
+export default async function handler(request: Request) {
+  const encoder = new TextEncoder();
+  const stream = new TransformStream();
+  const writer = stream.writable.getWriter();
+
+  // Stream response
+  runtime.messageService!.handleMessage(
+    runtime,
+    message,
+    async (content) => {
+      if (content?.text) {
+        await writer.write(encoder.encode(content.text));
+      }
+      return [];
+    }
+  ).then(() => writer.close());
+
+  return new Response(stream.readable, {
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
+}
+```
+
+---
+
+## Cost Estimation
+
+### AWS Lambda (1M requests/month, 512MB, 2s avg)
+
+- **Requests**: $0.20
+- **Compute**: $16.67
+- **Total**: ~$17/month
+
+### Vercel (1M requests/month)
+
+- **Requests**: Covered in Pro plan ($20/month)
+- **Compute**: Additional based on execution time
+- **Total**: ~$20-40/month
+
+### Cloudflare Workers (1M requests/month)
+
+- **Requests**: $0.50 per million
+- **Compute**: Included
+- **Total**: ~$0.50/month (incredible value!)
+
+---
+
+## Monitoring
+
+### AWS CloudWatch
+
+```bash
+# View logs
+aws logs tail /aws/lambda/eliza-function --follow
+
+# View metrics
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/Lambda \
+  --metric-name Duration \
+  --dimensions Name=FunctionName,Value=eliza-function \
+  --start-time 2026-03-03T00:00:00Z \
+  --end-time 2026-03-03T23:59:59Z \
+  --period 3600 \
+  --statistics Average
+```
+
+### Vercel Analytics
+
+View in Vercel Dashboard:
+- Function execution times
+- Error rates
+- Geographic distribution
+
+### Cloudflare Analytics
+
+```bash
+# View logs
+wrangler tail
+
+# View analytics in dashboard
+open https://dash.cloudflare.com
+```
+
+---
+
+## Best Practices
+
+<Tip>
+**Minimize Bundle Size**: Use tree-shaking and remove unused dependencies.
+</Tip>
+
+<Tip>
+**Environment Variables**: Never hardcode secrets - use platform secret management.
+</Tip>
+
+<Tip>
+**Timeout Handling**: Set appropriate timeouts and handle them gracefully.
+</Tip>
+
+<Tip>
+**Error Logging**: Implement proper error logging and monitoring.
+</Tip>
+
+<Tip>
+**Region Selection**: Deploy close to your users for lower latency.
+</Tip>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="REST API Server" icon="server" href="/examples/rest-api-server">
+    Learn about traditional server deployment
+  </Card>
+  <Card title="Browser Integration" icon="browser" href="/examples/browser-integration">
+    Run agents client-side
+  </Card>
+  <Card title="Deploy Guide" icon="rocket" href="/guides/deploy-a-project">
+    Complete deployment documentation
+  </Card>
+  <Card title="Multi-Agent" icon="users" href="/examples/multi-agent">
+    Deploy multi-agent systems serverlessly
+  </Card>
+</CardGroup>

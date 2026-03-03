@@ -1,0 +1,413 @@
+---
+title: "Plugin Hooks"
+description: "Lifecycle hooks for plugin registration and filtering"
+---
+
+## Overview
+
+Plugin hooks provide a system for intercepting and modifying plugin registration during agent initialization. This allows external systems to participate in plugin loading, filtering, and post-registration processing.
+
+## Hook Types
+
+### Pre-Register Hooks
+
+Run before plugins are registered with the runtime. Can filter, add, or modify the plugin list.
+
+### Post-Register Hooks
+
+Run after plugins are registered. Used for cleanup, logging, or additional setup.
+
+## Hook Context
+
+```typescript
+interface PluginHookContext {
+  character: Character;           // Agent character configuration
+  env: NodeJS.ProcessEnv;        // Environment variables
+  plugins: Plugin[];             // Current plugin list
+}
+```
+
+## Pre-Register Hooks
+
+### registerPreRegisterHook
+
+Register a hook that runs before plugins are registered.
+
+**Signature:**
+```typescript
+function registerPreRegisterHook(
+  hook: PluginPreRegisterHook
+): () => void
+```
+
+**Parameters:**
+- `hook`: Function that receives context and returns filtered plugins
+
+**Returns:** Unregister function
+
+**Hook Type:**
+```typescript
+type PluginPreRegisterHook = (
+  context: PluginHookContext
+) => Promise<PluginFilterResult> | PluginFilterResult
+
+interface PluginFilterResult {
+  plugins: Plugin[];    // Filtered list of plugins
+  changes: string[];    // Description of changes made
+}
+```
+
+**Example:**
+```typescript
+import { registerPreRegisterHook } from "@elizaos/core";
+
+const unregister = registerPreRegisterHook(async (context) => {
+  // Filter out plugins by name
+  const filtered = context.plugins.filter(
+    plugin => !plugin.name.includes("deprecated")
+  );
+  
+  return {
+    plugins: filtered,
+    changes: [`Removed ${context.plugins.length - filtered.length} deprecated plugins`]
+  };
+});
+
+// Later, to unregister:
+unregister();
+```
+
+### runPreRegisterHooks
+
+Executes all registered pre-register hooks in order.
+
+**Signature:**
+```typescript
+function runPreRegisterHooks(
+  context: PluginHookContext
+): Promise<PluginFilterResult>
+```
+
+**Example:**
+```typescript
+const result = await runPreRegisterHooks({
+  character: myCharacter,
+  env: process.env,
+  plugins: initialPlugins
+});
+
+console.log("Filtered plugins:", result.plugins);
+console.log("Changes:", result.changes);
+```
+
+## Post-Register Hooks
+
+### registerPostRegisterHook
+
+Register a hook that runs after plugins are registered.
+
+**Signature:**
+```typescript
+function registerPostRegisterHook(
+  hook: PluginPostRegisterHook
+): () => void
+```
+
+**Parameters:**
+- `hook`: Function that receives context after registration
+
+**Returns:** Unregister function
+
+**Hook Type:**
+```typescript
+type PluginPostRegisterHook = (
+  context: PluginHookContext
+) => Promise<void> | void
+```
+
+**Example:**
+```typescript
+import { registerPostRegisterHook } from "@elizaos/core";
+
+const unregister = registerPostRegisterHook(async (context) => {
+  console.log(`Successfully registered ${context.plugins.length} plugins`);
+  
+  // Perform post-registration setup
+  for (const plugin of context.plugins) {
+    if (plugin.name.startsWith("@myorg/")) {
+      console.log(`Custom plugin loaded: ${plugin.name}`);
+    }
+  }
+});
+
+// Later, to unregister:
+unregister();
+```
+
+### runPostRegisterHooks
+
+Executes all registered post-register hooks in order.
+
+**Signature:**
+```typescript
+function runPostRegisterHooks(
+  context: PluginHookContext
+): Promise<void>
+```
+
+**Example:**
+```typescript
+await runPostRegisterHooks({
+  character: myCharacter,
+  env: process.env,
+  plugins: registeredPlugins
+});
+```
+
+## Plugin Filtering
+
+### applyPluginFilter
+
+Filters plugins based on allow/deny lists.
+
+**Signature:**
+```typescript
+function applyPluginFilter(
+  plugins: Plugin[],
+  config: PluginFilterConfig
+): PluginFilterResult
+
+interface PluginFilterConfig {
+  allow?: string[];  // Whitelist: only these plugins
+  deny?: string[];   // Blacklist: exclude these plugins
+}
+```
+
+**Filtering Logic:**
+1. If `allow` is specified, only plugins in the allow list are kept
+2. If `deny` is specified, plugins in the deny list are removed
+3. Both can be used together: allow is applied first, then deny
+
+**Name Matching:**
+- Full plugin name: `"@elizaos/plugin-discord"`
+- Short name: `"discord"` (matches `"@elizaos/plugin-discord"`)
+- Case-insensitive matching
+
+**Example:**
+```typescript
+import { applyPluginFilter } from "@elizaos/core";
+
+const result = applyPluginFilter(allPlugins, {
+  allow: ["twitter", "discord", "telegram"],
+  deny: ["deprecated-plugin"]
+});
+
+console.log("Filtered plugins:", result.plugins);
+console.log("Changes made:", result.changes);
+// Output:
+// Changes made: [
+//   "Allow list filter: 10 → 3 plugins",
+//   "Filtered out plugin (not in allow list): @elizaos/plugin-slack"
+// ]
+```
+
+### createPluginFilterHook
+
+Creates a pre-register hook from a filter configuration.
+
+**Signature:**
+```typescript
+function createPluginFilterHook(
+  config: PluginFilterConfig
+): PluginPreRegisterHook
+```
+
+**Example:**
+```typescript
+import { createPluginFilterHook, registerPreRegisterHook } from "@elizaos/core";
+
+// Create and register filter hook
+const filterHook = createPluginFilterHook({
+  allow: ["twitter", "discord"],
+  deny: ["experimental-plugin"]
+});
+
+registerPreRegisterHook(filterHook);
+```
+
+## Utility Functions
+
+### getPreRegisterHookCount
+
+Returns the number of registered pre-register hooks.
+
+**Signature:**
+```typescript
+function getPreRegisterHookCount(): number
+```
+
+### getPostRegisterHookCount
+
+Returns the number of registered post-register hooks.
+
+**Signature:**
+```typescript
+function getPostRegisterHookCount(): number
+```
+
+### clearAllHooks
+
+Clears all registered hooks. Useful for testing.
+
+**Signature:**
+```typescript
+function clearAllHooks(): void
+```
+
+## Complete Example
+
+```typescript
+import {
+  registerPreRegisterHook,
+  registerPostRegisterHook,
+  applyPluginFilter,
+  createPluginFilterHook
+} from "@elizaos/core";
+
+// Example 1: Custom filtering logic
+registerPreRegisterHook(async (context) => {
+  const { plugins, env, character } = context;
+  const changes: string[] = [];
+  
+  // Filter by environment
+  const filtered = plugins.filter(plugin => {
+    if (env.NODE_ENV === "production") {
+      if (plugin.name.includes("test") || plugin.name.includes("debug")) {
+        changes.push(`Filtered out ${plugin.name} in production`);
+        return false;
+      }
+    }
+    return true;
+  });
+  
+  // Add character-specific plugins
+  if (character.settings?.enableTwitter) {
+    const twitterPlugin = await import("@elizaos/plugin-twitter");
+    filtered.push(twitterPlugin.default);
+    changes.push("Added Twitter plugin based on character settings");
+  }
+  
+  return { plugins: filtered, changes };
+});
+
+// Example 2: Using filter config
+const allowedPlugins = process.env.ALLOWED_PLUGINS?.split(",") || [];
+if (allowedPlugins.length > 0) {
+  const filterHook = createPluginFilterHook({
+    allow: allowedPlugins
+  });
+  registerPreRegisterHook(filterHook);
+}
+
+// Example 3: Post-registration analytics
+registerPostRegisterHook(async (context) => {
+  const pluginsByOrg: Record<string, number> = {};
+  
+  for (const plugin of context.plugins) {
+    const match = plugin.name.match(/^@([^/]+)/);
+    const org = match ? match[1] : "unknown";
+    pluginsByOrg[org] = (pluginsByOrg[org] || 0) + 1;
+  }
+  
+  console.log("Plugins loaded by organization:", pluginsByOrg);
+  
+  // Send analytics
+  await fetch("https://analytics.example.com/plugins", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      agentId: context.character.id,
+      pluginCount: context.plugins.length,
+      pluginsByOrg
+    })
+  });
+});
+```
+
+## Environment-Based Filtering
+
+Filter plugins based on environment variables:
+
+```typescript
+registerPreRegisterHook((context) => {
+  const allowList = process.env.PLUGIN_ALLOW_LIST?.split(",") || [];
+  const denyList = process.env.PLUGIN_DENY_LIST?.split(",") || [];
+  
+  if (allowList.length === 0 && denyList.length === 0) {
+    return { plugins: context.plugins, changes: [] };
+  }
+  
+  return applyPluginFilter(context.plugins, {
+    allow: allowList.length > 0 ? allowList : undefined,
+    deny: denyList.length > 0 ? denyList : undefined
+  });
+});
+```
+
+## Character-Based Configuration
+
+Load plugins based on character settings:
+
+```typescript
+registerPreRegisterHook(async (context) => {
+  const { character, plugins } = context;
+  const changes: string[] = [];
+  
+  // Load plugins specified in character file
+  const characterPlugins = character.settings?.plugins as string[] || [];
+  
+  for (const pluginName of characterPlugins) {
+    if (!plugins.some(p => p.name === pluginName)) {
+      try {
+        const pluginModule = await import(pluginName);
+        plugins.push(pluginModule.default);
+        changes.push(`Loaded character plugin: ${pluginName}`);
+      } catch (error) {
+        console.error(`Failed to load plugin ${pluginName}:`, error);
+      }
+    }
+  }
+  
+  return { plugins, changes };
+});
+```
+
+## Hook Execution Order
+
+Hooks execute in registration order:
+
+```typescript
+// Hook 1 runs first
+registerPreRegisterHook((context) => {
+  console.log("Hook 1: Filtering development plugins");
+  return { plugins: context.plugins, changes: [] };
+});
+
+// Hook 2 runs second
+registerPreRegisterHook((context) => {
+  console.log("Hook 2: Adding custom plugins");
+  return { plugins: context.plugins, changes: [] };
+});
+
+// Hook 3 runs last
+registerPreRegisterHook((context) => {
+  console.log("Hook 3: Final validation");
+  return { plugins: context.plugins, changes: [] };
+});
+```
+
+## See Also
+
+- [Plugin Interface](/api/plugin-interface)
+- [Plugin Schemas](/api/plugin-schemas)
+- [Runtime](/api/runtime)

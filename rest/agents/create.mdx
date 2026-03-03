@@ -1,0 +1,323 @@
+---
+title: Create Agent
+description: Create a new agent with a character configuration
+api: POST /agents
+---
+
+## Endpoint
+
+```
+POST /agents
+```
+
+Creates a new agent in your elizaOS deployment. An agent requires a character configuration that defines its personality, knowledge, and behavior.
+
+## Request
+
+### Headers
+
+<ParamField header="Content-Type" type="string" required>
+  Must be `application/json`
+</ParamField>
+
+<ParamField header="Authorization" type="string">
+  Bearer token for authentication (if required)
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="name" type="string" required>
+  Name of the agent's character
+</ParamField>
+
+<ParamField body="bio" type="string">
+  Short biography or description of the agent
+</ParamField>
+
+<ParamField body="lore" type="array">
+  Array of background story elements
+</ParamField>
+
+<ParamField body="messageExamples" type="array">
+  Example conversations for the agent to learn from
+</ParamField>
+
+<ParamField body="style" type="object">
+  Writing and communication style settings
+  
+  <ParamField body="style.all" type="array">
+    General style guidelines
+  </ParamField>
+  
+  <ParamField body="style.chat" type="array">
+    Chat-specific style guidelines
+  </ParamField>
+  
+  <ParamField body="style.post" type="array">
+    Post-specific style guidelines
+  </ParamField>
+</ParamField>
+
+<ParamField body="topics" type="array">
+  Topics the agent is knowledgeable about
+</ParamField>
+
+<ParamField body="adjectives" type="array">
+  Adjectives describing the agent's personality
+</ParamField>
+
+<ParamField body="settings" type="object">
+  Configuration settings for the agent
+  
+  <ParamField body="settings.model" type="string">
+    LLM model to use (e.g., "gpt-4", "claude-3-opus")
+  </ParamField>
+  
+  <ParamField body="settings.embeddingModel" type="string">
+    Embedding model for semantic search
+  </ParamField>
+</ParamField>
+
+<ParamField body="plugins" type="array">
+  Array of plugin names to enable for this agent
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the agent was created successfully
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+  Created agent details
+  
+  <ResponseField name="data.agentId" type="string" required>
+    Unique identifier for the newly created agent (UUID)
+  </ResponseField>
+  
+  <ResponseField name="data.name" type="string" required>
+    Name of the agent
+  </ResponseField>
+  
+  <ResponseField name="data.status" type="string" required>
+    Initial status: `inactive`
+  </ResponseField>
+  
+  <ResponseField name="data.createdAt" type="number">
+    Unix timestamp when the agent was created
+  </ResponseField>
+</ResponseField>
+
+## Examples
+
+### Minimal Agent
+
+```bash
+curl -X POST http://localhost:3000/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Alice",
+    "bio": "A helpful AI assistant"
+  }'
+```
+
+### Complete Agent Configuration
+
+```bash
+curl -X POST http://localhost:3000/agents \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "name": "TechSupport",
+    "bio": "A technical support specialist who helps users troubleshoot software issues",
+    "lore": [
+      "Has 10 years of experience in technical support",
+      "Specializes in debugging complex software problems",
+      "Known for patience and clear explanations"
+    ],
+    "topics": [
+      "software troubleshooting",
+      "system administration",
+      "networking",
+      "debugging"
+    ],
+    "adjectives": [
+      "patient",
+      "knowledgeable",
+      "helpful",
+      "thorough"
+    ],
+    "style": {
+      "all": [
+        "Use clear, jargon-free language",
+        "Break down complex problems into simple steps",
+        "Always confirm user understanding before moving forward"
+      ],
+      "chat": [
+        "Be conversational and friendly",
+        "Use analogies to explain technical concepts"
+      ]
+    },
+    "settings": {
+      "model": "gpt-4",
+      "embeddingModel": "text-embedding-3-small"
+    },
+    "plugins": ["bootstrap"]
+  }'
+```
+
+## Response Example
+
+### Success Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "agentId": "770e8400-e29b-41d4-a716-446655440002",
+    "name": "TechSupport",
+    "status": "inactive",
+    "createdAt": 1709683200000
+  }
+}
+```
+
+## Code Examples
+
+### JavaScript/Node.js
+
+```javascript
+const agentConfig = {
+  name: "Alice",
+  bio: "A helpful AI assistant",
+  topics: ["general knowledge", "conversation"],
+  adjectives: ["friendly", "helpful", "empathetic"]
+};
+
+const response = await fetch('http://localhost:3000/agents', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify(agentConfig)
+});
+
+const { success, data } = await response.json();
+
+if (success) {
+  console.log(`Agent created with ID: ${data.agentId}`);
+}
+```
+
+### Python
+
+```python
+import requests
+
+agent_config = {
+    "name": "Alice",
+    "bio": "A helpful AI assistant",
+    "topics": ["general knowledge", "conversation"],
+    "adjectives": ["friendly", "helpful", "empathetic"]
+}
+
+response = requests.post(
+    'http://localhost:3000/agents',
+    json=agent_config
+)
+
+data = response.json()
+
+if data['success']:
+    print(f"Agent created with ID: {data['data']['agentId']}")
+```
+
+### TypeScript
+
+```typescript
+interface CreateAgentRequest {
+  name: string;
+  bio?: string;
+  lore?: string[];
+  topics?: string[];
+  adjectives?: string[];
+  style?: {
+    all?: string[];
+    chat?: string[];
+    post?: string[];
+  };
+  settings?: {
+    model?: string;
+    embeddingModel?: string;
+  };
+  plugins?: string[];
+}
+
+interface CreateAgentResponse {
+  success: boolean;
+  data: {
+    agentId: string;
+    name: string;
+    status: string;
+    createdAt: number;
+  };
+}
+
+const agentConfig: CreateAgentRequest = {
+  name: "Alice",
+  bio: "A helpful AI assistant",
+  topics: ["general knowledge"],
+  adjectives: ["friendly", "helpful"]
+};
+
+const response = await fetch('http://localhost:3000/agents', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(agentConfig)
+});
+
+const result: CreateAgentResponse = await response.json();
+```
+
+## Error Responses
+
+### 400 Bad Request
+
+```json
+{
+  "success": false,
+  "error": "Agent name is required"
+}
+```
+
+### 409 Conflict
+
+```json
+{
+  "success": false,
+  "error": "Agent with this name already exists"
+}
+```
+
+### 500 Internal Server Error
+
+```json
+{
+  "success": false,
+  "error": "Failed to create agent"
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Start Agent" icon="play" href="/rest/agents/start">
+    Start your newly created agent
+  </Card>
+  <Card title="Update Agent" icon="edit" href="/rest/agents/update">
+    Modify agent configuration
+  </Card>
+  <Card title="Send Message" icon="paper-plane" href="/rest/messaging/send-message">
+    Interact with your agent
+  </Card>
+</CardGroup>

@@ -1,0 +1,487 @@
+---
+title: Create Channel
+description: Create a new communication channel for agent interactions
+api: POST /agents/{agentId}/channels
+---
+
+## Endpoint
+
+```
+POST /agents/{agentId}/channels
+```
+
+Creates a new communication channel for an agent. Channels organize conversations by platform, topic, or use case (e.g., Discord, Telegram, Web, Support).
+
+## Request
+
+### Path Parameters
+
+<ParamField path="agentId" type="string" required>
+  Unique identifier (UUID) of the agent
+</ParamField>
+
+### Headers
+
+<ParamField header="Content-Type" type="string" required>
+  Must be `application/json`
+</ParamField>
+
+<ParamField header="Authorization" type="string">
+  Bearer token for authentication (if required)
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="name" type="string" required>
+  Name of the channel
+</ParamField>
+
+<ParamField body="type" type="string" required>
+  Channel type: `discord`, `telegram`, `twitter`, `direct`, `web`, or custom
+</ParamField>
+
+<ParamField body="config" type="object">
+  Channel-specific configuration settings
+  
+  <ParamField body="config.platformId" type="string">
+    Platform-specific channel identifier (e.g., Discord channel ID)
+  </ParamField>
+  
+  <ParamField body="config.webhookUrl" type="string">
+    Webhook URL for receiving messages
+  </ParamField>
+  
+  <ParamField body="config.token" type="string">
+    Authentication token for the platform
+  </ParamField>
+  
+  <ParamField body="config.autoReply" type="boolean">
+    Whether to automatically reply to messages
+  </ParamField>
+</ParamField>
+
+<ParamField body="metadata" type="object">
+  Additional metadata for the channel
+</ParamField>
+
+<ParamField body="enabled" type="boolean" default="true">
+  Whether the channel is enabled
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the channel was created successfully
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+  Created channel details
+  
+  <ResponseField name="data.channelId" type="string" required>
+    Unique identifier for the channel (UUID)
+  </ResponseField>
+  
+  <ResponseField name="data.name" type="string" required>
+    Name of the channel
+  </ResponseField>
+  
+  <ResponseField name="data.type" type="string" required>
+    Channel type
+  </ResponseField>
+  
+  <ResponseField name="data.agentId" type="string" required>
+    Agent ID associated with the channel
+  </ResponseField>
+  
+  <ResponseField name="data.enabled" type="boolean">
+    Whether the channel is enabled
+  </ResponseField>
+  
+  <ResponseField name="data.createdAt" type="number">
+    Unix timestamp when the channel was created
+  </ResponseField>
+</ResponseField>
+
+## Examples
+
+### Create Web Channel
+
+```bash
+curl -X POST http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/channels \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Website Chat",
+    "type": "web",
+    "config": {
+      "autoReply": true
+    }
+  }'
+```
+
+### Create Discord Channel
+
+```bash
+curl -X POST http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/channels \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "name": "Discord Support",
+    "type": "discord",
+    "config": {
+      "platformId": "123456789012345678",
+      "token": "DISCORD_BOT_TOKEN",
+      "autoReply": true
+    },
+    "metadata": {
+      "guild": "My Server",
+      "purpose": "customer-support"
+    }
+  }'
+```
+
+### Create Telegram Channel
+
+```bash
+curl -X POST http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/channels \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Telegram Bot",
+    "type": "telegram",
+    "config": {
+      "token": "TELEGRAM_BOT_TOKEN",
+      "autoReply": true
+    }
+  }'
+```
+
+### Create Custom Channel
+
+```bash
+curl -X POST http://localhost:3000/agents/550e8400-e29b-41d4-a716-446655440000/channels \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Slack Workspace",
+    "type": "slack",
+    "config": {
+      "webhookUrl": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+      "token": "SLACK_BOT_TOKEN",
+      "autoReply": false
+    },
+    "enabled": true
+  }'
+```
+
+## Response Example
+
+### Success Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "channelId": "channel-770e8400-e29b-41d4-a716-446655440020",
+    "name": "Website Chat",
+    "type": "web",
+    "agentId": "550e8400-e29b-41d4-a716-446655440000",
+    "enabled": true,
+    "createdAt": 1709683200000
+  }
+}
+```
+
+## Code Examples
+
+### JavaScript/Node.js
+
+```javascript
+const agentId = "550e8400-e29b-41d4-a716-446655440000";
+
+const createChannel = async (name, type, config = {}) => {
+  const response = await fetch(
+    `http://localhost:3000/agents/${agentId}/channels`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name,
+        type,
+        config,
+        enabled: true
+      })
+    }
+  );
+  
+  const { success, data } = await response.json();
+  
+  if (success) {
+    console.log(`Channel created: ${data.channelId}`);
+    return data;
+  }
+};
+
+// Create a web channel
+await createChannel('Website Chat', 'web', {
+  autoReply: true
+});
+
+// Create a Discord channel
+await createChannel('Discord Support', 'discord', {
+  platformId: '123456789012345678',
+  token: process.env.DISCORD_BOT_TOKEN,
+  autoReply: true
+});
+```
+
+### Python
+
+```python
+import requests
+import os
+
+agent_id = "550e8400-e29b-41d4-a716-446655440000"
+
+def create_channel(name: str, channel_type: str, config: dict = None):
+    response = requests.post(
+        f'http://localhost:3000/agents/{agent_id}/channels',
+        json={
+            'name': name,
+            'type': channel_type,
+            'config': config or {},
+            'enabled': True
+        }
+    )
+    
+    data = response.json()
+    
+    if data['success']:
+        print(f"Channel created: {data['data']['channelId']}")
+        return data['data']
+
+# Create a web channel
+create_channel('Website Chat', 'web', {
+    'autoReply': True
+})
+
+# Create a Discord channel
+create_channel('Discord Support', 'discord', {
+    'platformId': '123456789012345678',
+    'token': os.getenv('DISCORD_BOT_TOKEN'),
+    'autoReply': True
+})
+```
+
+### TypeScript
+
+```typescript
+interface ChannelConfig {
+  platformId?: string;
+  webhookUrl?: string;
+  token?: string;
+  autoReply?: boolean;
+  [key: string]: any;
+}
+
+interface CreateChannelRequest {
+  name: string;
+  type: string;
+  config?: ChannelConfig;
+  metadata?: Record<string, any>;
+  enabled?: boolean;
+}
+
+interface CreateChannelResponse {
+  success: boolean;
+  data: {
+    channelId: string;
+    name: string;
+    type: string;
+    agentId: string;
+    enabled: boolean;
+    createdAt: number;
+  };
+}
+
+const createChannel = async (
+  agentId: string,
+  request: CreateChannelRequest
+): Promise<CreateChannelResponse> => {
+  const response = await fetch(
+    `http://localhost:3000/agents/${agentId}/channels`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request)
+    }
+  );
+  
+  return await response.json();
+};
+
+// Usage
+const channel = await createChannel(
+  "550e8400-e29b-41d4-a716-446655440000",
+  {
+    name: "Website Chat",
+    type: "web",
+    config: {
+      autoReply: true
+    },
+    enabled: true
+  }
+);
+```
+
+## Error Responses
+
+### 400 Bad Request
+
+```json
+{
+  "success": false,
+  "error": "Channel name and type are required"
+}
+```
+
+### 404 Not Found
+
+```json
+{
+  "success": false,
+  "error": "Agent not found"
+}
+```
+
+### 409 Conflict
+
+```json
+{
+  "success": false,
+  "error": "Channel with this name already exists"
+}
+```
+
+### 500 Internal Server Error
+
+```json
+{
+  "success": false,
+  "error": "Failed to create channel"
+}
+```
+
+## Channel Types
+
+### Built-in Types
+
+- **discord** - Discord server integration
+- **telegram** - Telegram bot integration
+- **twitter** - Twitter/X integration
+- **web** - Web-based chat interface
+- **direct** - Direct API communication
+
+### Custom Types
+
+You can create custom channel types for your specific integrations:
+
+```javascript
+await createChannel('Slack Support', 'slack', {
+  webhookUrl: 'https://hooks.slack.com/...',
+  token: 'xoxb-...',
+  autoReply: true
+});
+```
+
+## Managing Channels
+
+### List All Channels
+
+```javascript
+const channels = await fetch(
+  `http://localhost:3000/agents/${agentId}/channels`
+).then(r => r.json());
+
+console.log(`Found ${channels.data.length} channels`);
+```
+
+### Update Channel
+
+```javascript
+await fetch(
+  `http://localhost:3000/agents/${agentId}/channels/${channelId}`,
+  {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      enabled: false
+    })
+  }
+);
+```
+
+### Delete Channel
+
+```javascript
+await fetch(
+  `http://localhost:3000/agents/${agentId}/channels/${channelId}`,
+  {
+    method: 'DELETE'
+  }
+);
+```
+
+## Best Practices
+
+### Secure Token Storage
+
+Never hardcode tokens in configuration. Use environment variables:
+
+```javascript
+const config = {
+  token: process.env.DISCORD_BOT_TOKEN,
+  platformId: process.env.DISCORD_CHANNEL_ID
+};
+```
+
+### Test Channels First
+
+Create test channels before production:
+
+```javascript
+await createChannel('Test Channel', 'discord', {
+  platformId: TEST_CHANNEL_ID,
+  token: process.env.DISCORD_BOT_TOKEN,
+  autoReply: false  // Manual testing
+});
+```
+
+### Use Metadata
+
+Store additional context in metadata:
+
+```javascript
+{
+  name: "Support Channel",
+  type: "discord",
+  metadata: {
+    team: "customer-support",
+    region: "US-East",
+    priority: "high"
+  }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Send Message" icon="paper-plane" href="/rest/messaging/send-message">
+    Send messages through the channel
+  </Card>
+  <Card title="Get Messages" icon="list" href="/rest/messaging/get-messages">
+    Retrieve channel message history
+  </Card>
+  <Card title="Sessions" icon="clock" href="/rest/messaging/sessions">
+    Manage conversation sessions
+  </Card>
+</CardGroup>
